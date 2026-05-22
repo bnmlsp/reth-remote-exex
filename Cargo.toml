@@ -1,0 +1,43 @@
+[package]
+name = "exex-for-go"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reth = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth-exex = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0", features = ["serde"] }
+reth-node-ethereum = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth-node-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth-execution-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth-primitives-traits = "0.3.1"
+
+alloy-consensus = "2.0.4"
+alloy-primitives = "1.5.7"
+alloy-eips = "2.0.4"
+alloy-eip2930 = "0.2.3"
+alloy-eip7702 = "0.6.3"
+revm-database = "13.0.1"
+revm-state = "11.0.1"
+
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
+
+tonic = "0.11"
+prost = "0.12"
+
+eyre = "0.6"
+
+[build-dependencies]
+tonic-build = "0.11"
+
+[[bin]]
+name = "exex"
+path = "src/exex.rs"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true

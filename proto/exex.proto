@@ -1,0 +1,221 @@
+syntax = "proto3";
+
+package exex;
+
+service RemoteExEx {
+  rpc Subscribe(SubscribeRequest) returns (stream Notification) {}
+}
+
+message SubscribeRequest {}
+
+// Top-level notification
+message Notification {
+  oneof event {
+    ChainCommitted chain_committed = 1;
+    ChainReorged   chain_reorged   = 2;
+    ChainReverted  chain_reverted  = 3;
+  }
+}
+
+message ChainCommitted { Chain new = 1; }
+message ChainReorged   { Chain old = 1; Chain new = 2; }
+message ChainReverted  { Chain old = 1; }
+
+// ── Chain ────────────────────────────────────────────────────────────────────
+
+message Chain {
+  repeated BlockWithReceipts blocks = 1;
+  StateDiff                  state_diff = 2;
+}
+
+message BlockWithReceipts {
+  BlockHeader          header   = 1;
+  repeated Transaction txs      = 2;
+  repeated bytes       senders  = 3;  // Address per tx, 20 bytes each
+  repeated Receipt     receipts = 4;
+  repeated Withdrawal  withdrawals = 5;
+}
+
+// ── Header ───────────────────────────────────────────────────────────────────
+
+message BlockHeader {
+  bytes  parent_hash             = 1;   // B256 32 bytes
+  bytes  ommers_hash             = 2;
+  bytes  beneficiary             = 3;   // Address 20 bytes
+  bytes  state_root              = 4;
+  bytes  transactions_root       = 5;
+  bytes  receipts_root           = 6;
+  bytes  logs_bloom              = 7;   // 256 bytes
+  bytes  difficulty              = 8;   // U256 32 bytes
+  uint64 number                  = 9;
+  uint64 gas_limit               = 10;
+  uint64 gas_used                = 11;
+  uint64 timestamp               = 12;
+  bytes  extra_data              = 13;
+  bytes  mix_hash                = 14;
+  bytes  nonce                   = 15;  // B64 8 bytes
+  // optional fields (post-merge / EIP-4844 etc.)
+  bool   has_base_fee_per_gas         = 16;
+  uint64 base_fee_per_gas             = 17;
+  bool   has_withdrawals_root         = 18;
+  bytes  withdrawals_root             = 19;
+  bool   has_blob_gas_used            = 20;
+  uint64 blob_gas_used                = 21;
+  bool   has_excess_blob_gas          = 22;
+  uint64 excess_blob_gas              = 23;
+  bool   has_parent_beacon_block_root = 24;
+  bytes  parent_beacon_block_root     = 25;
+  bool   has_requests_hash            = 26;
+  bytes  requests_hash                = 27;
+}
+
+// ── Withdrawal ───────────────────────────────────────────────────────────────
+
+message Withdrawal {
+  uint64 index            = 1;
+  uint64 validator_index  = 2;
+  bytes  address          = 3;  // 20 bytes
+  uint64 amount           = 4;  // gwei
+}
+
+// ── Transaction ──────────────────────────────────────────────────────────────
+
+message Transaction {
+  bytes  hash      = 1;  // B256 32 bytes
+  uint32 tx_type   = 2;  // 0=Legacy 1=2930 2=1559 3=4844 4=7702
+  Signature signature = 3;
+
+  // common fields
+  uint64 nonce     = 4;
+  uint64 gas_limit = 5;
+  bytes  value     = 6;   // U256 32 bytes
+  bytes  input     = 7;
+
+  // to: empty bytes = Create, 20 bytes = Call
+  bytes  to        = 8;
+
+  // Legacy / EIP-2930
+  bytes  chain_id  = 9;   // optional, empty = none
+  bytes  gas_price = 10;  // U128 as bytes (16 bytes)
+
+  // EIP-1559 / EIP-4844 / EIP-7702
+  bytes  max_fee_per_gas           = 11;  // U128 16 bytes
+  bytes  max_priority_fee_per_gas  = 12;
+
+  // EIP-2930 / EIP-1559 / EIP-4844 / EIP-7702
+  repeated AccessListItem access_list = 13;
+
+  // EIP-4844
+  repeated bytes blob_versioned_hashes = 14;  // each B256 32 bytes
+  bytes  max_fee_per_blob_gas          = 15;  // U128 16 bytes
+
+  // EIP-7702
+  repeated SignedAuthorization authorization_list = 16;
+}
+
+message Signature {
+  bool  y_parity = 1;
+  bytes r        = 2;  // U256 32 bytes
+  bytes s        = 3;
+}
+
+message AccessListItem {
+  bytes          address      = 1;  // 20 bytes
+  repeated bytes storage_keys = 2;  // each B256 32 bytes
+}
+
+message SignedAuthorization {
+  bytes  chain_id = 1;  // U256 32 bytes
+  bytes  address  = 2;  // 20 bytes
+  uint64 nonce    = 3;
+  bool   y_parity = 4;
+  bytes  r        = 5;
+  bytes  s        = 6;
+}
+
+// ── Receipt ──────────────────────────────────────────────────────────────────
+
+message Receipt {
+  uint32         tx_type             = 1;
+  bool           success             = 2;
+  uint64         cumulative_gas_used = 3;
+  repeated EventLog logs             = 4;
+}
+
+message EventLog {
+  bytes          address = 1;  // 20 bytes
+  repeated bytes topics  = 2;  // each B256 32 bytes
+  bytes          data    = 3;
+}
+
+// ── StateDiff ────────────────────────────────────────────────────────────────
+
+message StateDiff {
+  repeated AccountDiff accounts  = 1;
+  repeated ContractDiff contracts = 2;
+  repeated BlockReverts reverts   = 3;
+}
+
+message AccountDiff {
+  bytes         address       = 1;  // 20 bytes
+  AccountStatus status        = 2;
+  AccountInfo   info          = 3;  // present state (empty = destroyed/non-existent)
+  AccountInfo   original_info = 4;  // state before block (empty = new account)
+  repeated StorageSlotDiff storage = 5;
+}
+
+message AccountInfo {
+  bytes  balance   = 1;  // U256 32 bytes
+  uint64 nonce     = 2;
+  bytes  code_hash = 3;  // B256 32 bytes
+}
+
+enum AccountStatus {
+  LOADED_NOT_EXISTING  = 0;
+  LOADED               = 1;
+  LOADED_EMPTY_EIP161  = 2;
+  IN_MEMORY_CHANGE     = 3;
+  CHANGED              = 4;
+  DESTROYED            = 5;
+  DESTROYED_CHANGED    = 6;
+  DESTROYED_AGAIN      = 7;
+}
+
+message StorageSlotDiff {
+  bytes key      = 1;  // U256 32 bytes (storage slot index)
+  bytes previous = 2;  // U256 32 bytes (value before)
+  bytes current  = 3;  // U256 32 bytes (value after)
+}
+
+message ContractDiff {
+  bytes code_hash = 1;  // B256 32 bytes
+  bytes bytecode  = 2;  // raw bytes (original, no padding)
+}
+
+// per-block revert entries
+message BlockReverts {
+  repeated AccountRevert accounts = 1;
+}
+
+message AccountRevert {
+  bytes          address         = 1;
+  AccountRevertKind kind         = 2;
+  AccountInfo    revert_to_info  = 3;  // only when kind = REVERT_TO
+  repeated StorageRevert storage = 4;
+  AccountStatus  previous_status = 5;
+  bool           wipe_storage    = 6;
+}
+
+enum AccountRevertKind {
+  DO_NOTHING = 0;
+  DELETE_IT  = 1;
+  REVERT_TO  = 2;
+}
+
+message StorageRevert {
+  bytes key  = 1;  // U256 32 bytes
+  oneof revert_to {
+    bytes value     = 2;  // U256 32 bytes
+    bool  destroyed = 3;
+  }
+}

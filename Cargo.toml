@@ -4,16 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reth = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
-reth-exex = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0", features = ["serde"] }
-reth-node-ethereum = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
-reth-node-api = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
-reth-tracing = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
-reth-execution-types = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
-reth-ethereum-primitives = { git = "https://github.com/paradigmxyz/reth.git", tag = "v2.2.0" }
+reth = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs" }
+reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs", features = ["serde"] }
+reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs" }
+reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs" }
+reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs" }
+reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs", features = ["traces"] }
+reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs" }
 reth-primitives-traits = "0.3.1"
 
 alloy-consensus = "2.0.4"
+alloy-rpc-types-trace = "2.0.4"
 alloy-primitives = "1.5.7"
 alloy-eips = "2.0.4"
 alloy-eip2930 = "0.2.3"

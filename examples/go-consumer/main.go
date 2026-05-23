@@ -143,5 +143,34 @@ func printChain(label string, chain *pb.Chain) {
 			}
 		}
 	}
+
+	// call traces (internal txs)
+	fmt.Printf("  call_traces: %d blocks\n", len(chain.CallTraces))
+	for _, bct := range chain.CallTraces {
+		fmt.Printf("    block #%d: %d tx traces\n", bct.BlockNumber, len(bct.Txs))
+		for i, frame := range bct.Txs {
+			fmt.Printf("      tx[%d]:\n", i)
+			printCallFrame(frame, 8)
+		}
+	}
 	fmt.Println()
+}
+
+// printCallFrame recursively prints a CallFrame tree at the given indent depth.
+func printCallFrame(f *pb.CallFrame, indent int) {
+	pad := fmt.Sprintf("%*s", indent, "")
+	fmt.Printf("%stype=%s  from=%s  to=%s  value=%s  gas_used=%s\n",
+		pad, f.Typ, hexBytes(f.From), hexBytes(f.To), hexBytes(f.Value), hexBytes(f.GasUsed))
+	if f.Error != "" {
+		fmt.Printf("%s  error=%s\n", pad, f.Error)
+	}
+	if f.RevertReason != "" {
+		fmt.Printf("%s  revert_reason=%s\n", pad, f.RevertReason)
+	}
+	for i, log := range f.Logs {
+		fmt.Printf("%s  log[%d] addr=%s  topics=%d\n", pad, i, hexBytes(log.Address), len(log.Topics))
+	}
+	for _, child := range f.Calls {
+		printCallFrame(child, indent+2)
+	}
 }

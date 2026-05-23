@@ -24,8 +24,9 @@ message ChainReverted  { Chain old = 1; }
 // ── Chain ────────────────────────────────────────────────────────────────────
 
 message Chain {
-  repeated BlockWithReceipts blocks = 1;
-  StateDiff                  state_diff = 2;
+  repeated BlockWithReceipts blocks      = 1;
+  StateDiff                  state_diff  = 2;
+  repeated BlockCallTraces   call_traces = 3;  // one entry per block; empty list for old-chain / pipeline blocks
 }
 
 message BlockWithReceipts {
@@ -218,4 +219,37 @@ message StorageRevert {
     bytes value     = 2;  // U256 32 bytes
     bool  destroyed = 3;
   }
+}
+
+// ── Call Traces ───────────────────────────────────────────────────────────────
+
+message BlockCallTraces {
+  uint64             block_number = 1;
+  repeated CallFrame txs          = 2;  // one root CallFrame per transaction, same order as Block.txs
+}
+
+message CallFrame {
+  string typ           = 1;   // e.g. "CALL", "STATICCALL", "DELEGATECALL", "CREATE", "CREATE2"
+  bytes  from          = 2;   // Address 20 bytes
+  bytes  to            = 3;   // Address 20 bytes; empty = CREATE (no recipient)
+  bytes  value         = 4;   // U256 32 bytes big-endian; empty = absent (non-value call)
+  bytes  gas           = 5;   // U256 32 bytes big-endian
+  bytes  gas_used      = 6;   // U256 32 bytes big-endian
+  bytes  input         = 7;
+  bytes  output        = 8;   // empty = absent (call failed with no return data)
+  string error         = 9;   // empty = absent
+  string revert_reason = 10;  // empty = absent
+  repeated CallFrame    calls = 11;  // nested child frames (recursive)
+  repeated CallLogFrame logs  = 12;
+}
+
+// mirrors alloy_rpc_types_trace::geth::CallLogFrame; all fields are optional in the source type
+message CallLogFrame {
+  bytes          address      = 1;  // Address 20 bytes; empty = absent
+  repeated bytes topics       = 2;  // each B256 32 bytes; empty list = absent
+  bytes          data         = 3;  // empty = absent
+  bool           has_position = 4;
+  uint64         position     = 5;
+  bool           has_index    = 6;
+  uint64         index        = 7;
 }

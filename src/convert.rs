@@ -1,5 +1,6 @@
 use crate::proto;
 use alloy_primitives::{Address, U256, B256};
+use alloy_rpc_types_trace::geth::{CallFrame, CallLogFrame};
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_execution_types::Chain;
 use reth_exex::ExExNotification;
@@ -54,8 +55,9 @@ fn chain_to_proto(chain: &Chain) -> proto::Chain {
         .collect();
 
     let state_diff = state_diff_to_proto(chain);
+    let call_traces = call_traces_to_proto(chain);
 
-    proto::Chain { blocks, state_diff: Some(state_diff) }
+    proto::Chain { blocks, state_diff: Some(state_diff), call_traces }
 }
 
 // ── block + receipts ─────────────────────────────────────────────────────────
@@ -374,5 +376,52 @@ fn account_revert_to_proto(addr: &Address, revert: &AccountRevert) -> proto::Acc
         storage,
         previous_status: account_status_to_proto(revert.previous_status) as i32,
         wipe_storage: revert.wipe_storage,
+    }
+}
+
+// ── call traces ───────────────────────────────────────────────────────────────
+
+fn call_traces_to_proto(chain: &Chain) -> Vec<proto::BlockCallTraces> {
+    let Some(traces) = chain.call_traces() else {
+        return vec![];
+    };
+    traces
+        .iter()
+        .map(|(block_number, frames)| proto::BlockCallTraces {
+            block_number: *block_number,
+            txs: frames.iter().map(call_frame_to_proto).collect(),
+        })
+        .collect()
+}
+
+fn call_frame_to_proto(f: &CallFrame) -> proto::CallFrame {
+    proto::CallFrame {
+        typ: f.typ.clone(),
+        from: addr_to_bytes(f.from),
+        to: f.to.map(addr_to_bytes).unwrap_or_default(),
+        value: f.value.map(u256_to_bytes).unwrap_or_default(),
+        gas: u256_to_bytes(f.gas),
+        gas_used: u256_to_bytes(f.gas_used),
+        input: f.input.to_vec(),
+        output: f.output.as_ref().map(|b| b.to_vec()).unwrap_or_default(),
+        error: f.error.clone().unwrap_or_default(),
+        revert_reason: f.revert_reason.clone().unwrap_or_default(),
+        calls: f.calls.iter().map(call_frame_to_proto).collect(),
+        logs: f.logs.iter().map(call_log_frame_to_proto).collect(),
+    }
+}
+
+fn call_log_frame_to_proto(l: &CallLogFrame) -> proto::CallLogFrame {
+    proto::CallLogFrame {
+        address: l.address.map(addr_to_bytes).unwrap_or_default(),
+        topics: l.topics
+            .as_deref()
+            .map(|ts| ts.iter().map(b256_to_bytes).collect())
+            .unwrap_or_default(),
+        data: l.data.as_ref().map(|b| b.to_vec()).unwrap_or_default(),
+        has_position: l.position.is_some(),
+        position: l.position.unwrap_or(0),
+        has_index: l.index.is_some(),
+        index: l.index.unwrap_or(0),
     }
 }

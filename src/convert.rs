@@ -1,4 +1,5 @@
 use crate::proto;
+use alloy_consensus::Transaction;
 use alloy_primitives::{Address, U256, B256};
 use alloy_rpc_types_trace::geth::{CallFrame, CallLogFrame};
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
@@ -385,11 +386,25 @@ fn call_traces_to_proto(chain: &Chain) -> Vec<proto::BlockCallTraces> {
     let Some(traces) = chain.call_traces() else {
         return vec![];
     };
-    traces
-        .iter()
-        .map(|(block_number, frames)| proto::BlockCallTraces {
-            block_number: *block_number,
-            txs: frames.iter().map(call_frame_to_proto).collect(),
+    chain
+        .blocks_and_receipts()
+        .filter_map(|(block, _)| {
+            let block_number = block.header().number;
+            let tx_frames = traces.get(&block_number)?;
+            let protos = block
+                .body()
+                .transactions
+                .iter()
+                .zip(tx_frames.iter())
+                .map(|(tx, frame)| {
+                    let mut proto_frame = call_frame_to_proto(frame);
+                    // revm TracingInspector sets inputs.gas_limit = tx.gas_limit - intrinsic_gas;
+                    // restore to tx.gas_limit to match Geth callTracer semantics.
+                    proto_frame.gas = u256_to_bytes(U256::from(tx.gas_limit()));
+                    proto_frame
+                })
+                .collect();
+            Some(proto::BlockCallTraces { block_number, txs: protos })
         })
         .collect()
 }

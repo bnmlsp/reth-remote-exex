@@ -1,5 +1,5 @@
 [package]
-name = "exex-for-go"
+name = "reth-remote-exex"
 version = "0.1.0"
 edition = "2021"
 

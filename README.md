@@ -1,177 +1,82 @@
-# Reth Remote ExEx gRPC 服务
+# reth-remote-exex
 
-将 [reth](https://github.com/paradigmxyz/reth) ExEx（Execution Extension）编译进 reth 二进制，在每个区块执行后通过 gRPC 实时推送完整区块数据（blocks + receipts + state diff）到外部消费者，使用 protobuf 序列化，任何语言均可接入。
+A [reth](https://github.com/paradigmxyz/reth) ExEx (Execution Extension) that exposes a gRPC push server. On every committed, reorged, or reverted chain segment, the ExEx serializes block data to protobuf and streams it to all connected subscribers in real time.
 
-目标版本：**reth v2.2.0**
-
----
-
-## 架构说明
+## Architecture
 
 ```
-reth 节点进程
-├── ExEx 钩子（同进程，极低延迟）
-│     每个区块执行后收到 ExExNotification
+reth node process
+├── ExEx hook (in-process, low latency)
+│     receives ExExNotification on every block execution
 │     ChainCommitted / ChainReorged / ChainReverted
-│     包含：blocks + receipts + BundleState（state diff）
-└── gRPC server（0.0.0.0:10000）
+└── gRPC server (0.0.0.0:10000)
       └── RemoteExEx.Subscribe → stream Notification
-            外部消费者（Go / Python / Rust / ...）订阅
+            consumers in any language connect and receive data
 ```
 
-**ExEx 不包含** call trace / internal transactions，如需请用 `debug_traceBlockByNumber`。
+## Subscribe Filtering
 
----
+Clients declare which fields they need at subscribe time via boolean flags. The server serializes only the requested fields. All flags default to `false` — a client that sends no flags receives no data (explicit-subscription semantics).
 
-## 构建
+| Flag | Data |
+|------|------|
+| `include_headers` | `BlockWithReceipts.header` |
+| `include_transactions` | `BlockWithReceipts.txs` + `senders` (always bundled) |
+| `include_receipts` | `BlockWithReceipts.receipts` |
+| `include_withdrawals` | `BlockWithReceipts.withdrawals` |
+| `include_state_diff` | `Chain.state_diff` |
+| `include_call_traces` | `Chain.call_traces` (internal transactions) |
 
-### 前提
-
-```bash
-# Rust stable
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
-rustup default stable
-
-# 系统依赖（Ubuntu/Debian）
-sudo apt-get update
-sudo apt-get install -y \
-    build-essential pkg-config libssl-dev \
-    libclang-dev protobuf-compiler cmake
-```
-
-### 编译
+## Build
 
 ```bash
+# Rust stable required
 cargo build --release
-# fat LTO + codegen-units=1，首次编译约 15-30 分钟
-# 产出：target/release/exex（约 68MB，已 strip）
+# Output: target/release/exex (~70 MB, stripped)
+# First build takes 15-30 minutes (fat LTO)
 ```
 
----
+## go-consumer
 
-## 部署
-
-### 替换二进制
-
-```bash
-# 停止节点（最多等 180 秒优雅关闭）
-sudo systemctl stop reth
-
-# 备份原始二进制
-cp /home/ubuntu/eth/bin/reth /home/ubuntu/eth/bin/reth.bak
-
-# 替换
-cp target/release/exex /home/ubuntu/eth/bin/reth
-
-# 启动
-sudo systemctl start reth
-```
-
-### 回滚
-
-```bash
-sudo systemctl stop reth
-cp /home/ubuntu/eth/bin/reth.bak /home/ubuntu/eth/bin/reth
-sudo systemctl start reth
-```
-
-### 验证
-
-```bash
-# ExEx 已启动
-sudo journalctl -u reth -n 50 | grep -i exex
-
-# gRPC 端口监听
-ss -tlnp | grep 10000
-# 预期：LISTEN 0  128  0.0.0.0:10000  0.0.0.0:*
-
-# 节点已同步
-curl -s -X POST http://127.0.0.1:8545 \
-  -H 'Content-Type: application/json' \
-  --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}'
-# 预期：{"result":false}
-```
-
-### systemd 服务配置参考
-
-```ini
-[Unit]
-Description=reth Execution Layer Client
-After=network.target
-Wants=network.target
-
-[Service]
-User=ubuntu
-Type=simple
-Restart=always
-RestartSec=10
-ExecStart=/home/ubuntu/eth/bin/reth node \
-    --datadir /home/ubuntu/eth/data/reth \
-    --authrpc.jwtsecret /home/ubuntu/eth/cfg/jwt.hex \
-    --authrpc.addr 0.0.0.0 \
-    --authrpc.port 8551 \
-    --http --http.addr 0.0.0.0 --http.port 8545 \
-    --http.api eth,net,web3,txpool,debug,trace \
-    --http.corsdomain "*" \
-    --ws --ws.addr 0.0.0.0 --ws.port 8546 \
-    --ws.api eth,net,web3,txpool,debug,trace \
-    --port 30303 --addr 0.0.0.0 \
-    --max-peers 100 \
-    --rpc.max-response-size 160 \
-    --rpc.max-connections 500 \
-    --rpc.gascap 100000000 \
-    --rpc.max-tracing-requests 8 \
-    --metrics 127.0.0.1:9001 \
-    --log.file.directory /home/ubuntu/eth/log/reth \
-    -vvv
-TimeoutStopSec=180
-LimitNOFILE=1000000
-LimitNPROC=1000000
-
-[Install]
-WantedBy=default.target
-```
-
----
-
-## Go Consumer 示例
-
-示例代码位于 `examples/go-consumer/`，proto/gen/ 已预生成，clone 后直接可编译。
-
-### 构建
+A demo Go client with CLI flag support. Pre-generated proto files are committed — no protoc needed.
 
 ```bash
 cd examples/go-consumer
-go build -o consumer .
+go build ./...
+
+# Subscribe to specific fields (flags before addr)
+go run . --call-traces 127.0.0.1:10000
+go run . --headers --transactions --receipts 127.0.0.1:10000
+
+# All flags default to false; no flags = no data received
 ```
 
-### 运行
+## go-trace-verifier
+
+A correctness verification tool that streams N blocks via gRPC and compares call traces field-by-field against `debug_traceBlockByNumber` JSON-RPC responses.
 
 ```bash
-# 本机访问
-./consumer 127.0.0.1:10000
+cd examples/go-trace-verifier
+go build ./...
+go test ./...
 
-# 外部访问
-./consumer <节点IP>:10000
+# Verify N blocks (defaults: --grpc 127.0.0.1:10000, --rpc http://127.0.0.1:8545)
+go run . 50
+go run . 50 --grpc <addr> --rpc <url> --workers 8
 ```
 
----
+## Key Parameters
 
-## 关键参数
+| Parameter | Location | Default | Notes |
+|-----------|----------|---------|-------|
+| gRPC listen address | `src/exex.rs` | `0.0.0.0:10000` | Change to `[::1]:10000` to restrict to localhost |
+| Broadcast channel capacity | `src/exex.rs` | `16` | Lagged subscribers receive a warning and skip missed messages |
+| Per-client channel capacity | `src/exex.rs` | `16` | Increase if consumer processing is slow |
+| Max receive message size | `examples/go-consumer/main.go` | `64 MB` | Mainnet blocks rarely exceed 20 MB |
 
-| 参数 | 位置 | 当前值 | 说明 |
-|------|------|--------|------|
-| gRPC 监听地址 | `src/exex.rs` | `0.0.0.0:10000` | 改为 `[::1]:10000` 可限制仅本机访问 |
-| broadcast 队列 | `src/exex.rs` | `16` | 慢消费者时丢消息，可适当调大 |
-| per-client 队列 | `src/exex.rs` | `16` | 同上 |
-| consumer 接收上限 | `examples/go-consumer/main.go` | `64MB` | 单条消息上限，主网单块一般不超过 20MB |
+## Known Limitations
 
----
-
-## 已知限制
-
-1. **无认证**：明文无鉴权，建议内网部署或配置防火墙规则限制访问来源
-2. **慢消费者丢消息**：broadcast channel 满时新消息被静默丢弃，消费者无法感知
-3. **无断线重连**：consumer 断开后需业务代码自行实现重连逻辑
-4. **无 internal tx**：ExEx 不提供 call trace，需要 `debug_traceBlockByNumber` 补充
+- **No authentication**: plaintext, no TLS or auth. Deploy behind a firewall or restrict access at the network level.
+- **Lagged subscribers skip messages**: if the broadcast channel fills up, lagged clients receive a warning log and resume from the oldest available message.
+- **No reconnect logic**: consumers must implement their own reconnect logic.
+- **Serialization only**: server-side computation (e.g. `TracingInspector`) runs regardless of subscribe flags. Flag filtering controls serialization, not execution.

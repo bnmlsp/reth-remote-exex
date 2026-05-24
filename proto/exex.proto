@@ -6,7 +6,14 @@ service RemoteExEx {
   rpc Subscribe(SubscribeRequest) returns (stream Notification) {}
 }
 
-message SubscribeRequest {}
+message SubscribeRequest {
+  bool include_headers      = 1;  // BlockWithReceipts.header
+  bool include_transactions = 2;  // BlockWithReceipts.txs + senders (always bundled)
+  bool include_receipts     = 3;  // BlockWithReceipts.receipts
+  bool include_withdrawals  = 4;  // BlockWithReceipts.withdrawals
+  bool include_state_diff   = 5;  // Chain.state_diff
+  bool include_call_traces  = 6;  // Chain.call_traces
+}
 
 // Top-level notification
 message Notification {

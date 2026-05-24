@@ -1,18 +1,20 @@
-use exex_for_go::{
-    convert::notification_to_proto,
+use reth_remote_exex::{
+    convert::{notification_to_proto, SubscribeFlags},
     proto::{
         remote_ex_ex_server::{RemoteExEx, RemoteExExServer},
         Notification, SubscribeRequest,
     },
 };
+use tokio::sync::broadcast::error::RecvError;
 use futures_util::TryStreamExt;
 use reth::{builder::NodeTypes, primitives::EthPrimitives};
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
 use reth_node_api::FullNodeComponents;
 use reth_node_ethereum::EthereumNode;
-use reth_tracing::tracing::info;
+use reth_tracing::tracing::{info, warn};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
+
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -34,19 +36,37 @@ impl RemoteExEx for ExExService {
 
     async fn subscribe(
         &self,
-        _request: Request<SubscribeRequest>,
+        request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeStream>, Status> {
+        let req = request.into_inner();
+        let flags = SubscribeFlags {
+            include_headers: req.include_headers,
+            include_transactions: req.include_transactions,
+            include_receipts: req.include_receipts,
+            include_withdrawals: req.include_withdrawals,
+            include_state_diff: req.include_state_diff,
+            include_call_traces: req.include_call_traces,
+        };
+
         let (tx, rx) = mpsc::channel(PER_CLIENT_CHANNEL_CAPACITY);
         let mut notifications = self.notifications.subscribe();
 
         tokio::spawn(async move {
-            while let Ok(notification) = notifications.recv().await {
-                let proto_notif = notification_to_proto(&notification);
-                if tx.send(Ok(proto_notif)).await.is_err() {
-                    info!("gRPC client disconnected");
-                    break;
+            loop {
+                match notifications.recv().await {
+                    Ok(notification) => {
+                        let proto_notif = notification_to_proto(&notification, &flags);
+                        if tx.send(Ok(proto_notif)).await.is_err() {
+                            info!("gRPC client disconnected");
+                            break;
+                        }
+                        info!("Notification sent to gRPC client");
+                    }
+                    Err(RecvError::Lagged(n)) => {
+                        warn!("gRPC client lagged, dropped {} notifications", n);
+                    }
+                    Err(RecvError::Closed) => break,
                 }
-                info!("Notification sent to gRPC client");
             }
         });
 

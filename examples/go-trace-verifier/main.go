@@ -140,7 +140,7 @@ func streamLoop(ctx context.Context, grpcAddr string, workCh chan<- blockWork, n
 	}()
 
 	client := pb.NewRemoteExExClient(conn)
-	stream, err := client.Subscribe(ctx, &pb.SubscribeRequest{})
+	stream, err := client.Subscribe(ctx, &pb.SubscribeRequest{IncludeCallTraces: true})
 	if err != nil {
 		log.Printf("streamLoop: subscribe failed: %v", err)
 		return

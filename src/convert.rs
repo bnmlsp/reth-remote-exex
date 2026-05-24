@@ -1,5 +1,17 @@
 use crate::proto;
 use alloy_consensus::Transaction;
+
+/// Per-client subscription flags. Decouples proto-generated SubscribeRequest
+/// from the conversion layer so convert.rs has no dependency on proto types.
+#[derive(Default)]
+pub struct SubscribeFlags {
+    pub include_headers: bool,
+    pub include_transactions: bool,
+    pub include_receipts: bool,
+    pub include_withdrawals: bool,
+    pub include_state_diff: bool,
+    pub include_call_traces: bool,
+}
 use alloy_primitives::{Address, U256, B256};
 use alloy_rpc_types_trace::geth::{CallFrame, CallLogFrame};
 use reth_ethereum_primitives::{Receipt, TransactionSigned};
@@ -30,18 +42,18 @@ fn u128_to_bytes(v: u128) -> Vec<u8> {
 // ── notification ─────────────────────────────────────────────────────────────
 
 /// Converts an [`ExExNotification`] to its protobuf representation for gRPC streaming.
-pub fn notification_to_proto(notif: &ExExNotification) -> proto::Notification {
+pub fn notification_to_proto(notif: &ExExNotification, flags: &SubscribeFlags) -> proto::Notification {
     use reth_exex::ExExNotification::*;
     let event = match notif {
         ChainCommitted { new } => proto::notification::Event::ChainCommitted(proto::ChainCommitted {
-            new: Some(chain_to_proto(new)),
+            new: Some(chain_to_proto(new, flags)),
         }),
         ChainReorged { old, new } => proto::notification::Event::ChainReorged(proto::ChainReorged {
-            old: Some(chain_to_proto(old)),
-            new: Some(chain_to_proto(new)),
+            old: Some(chain_to_proto(old, flags)),
+            new: Some(chain_to_proto(new, flags)),
         }),
         ChainReverted { old } => proto::notification::Event::ChainReverted(proto::ChainReverted {
-            old: Some(chain_to_proto(old)),
+            old: Some(chain_to_proto(old, flags)),
         }),
     };
     proto::Notification { event: Some(event) }
@@ -49,41 +61,50 @@ pub fn notification_to_proto(notif: &ExExNotification) -> proto::Notification {
 
 // ── chain ────────────────────────────────────────────────────────────────────
 
-fn chain_to_proto(chain: &Chain) -> proto::Chain {
+pub(crate) fn chain_to_proto(chain: &Chain, flags: &SubscribeFlags) -> proto::Chain {
     let blocks = chain
         .blocks_and_receipts()
-        .map(|(block, receipts)| block_with_receipts_to_proto(block, receipts))
+        .map(|(block, receipts)| block_with_receipts_to_proto(block, receipts, flags))
         .collect();
 
-    let state_diff = state_diff_to_proto(chain);
-    let call_traces = call_traces_to_proto(chain);
+    let state_diff = if flags.include_state_diff { Some(state_diff_to_proto(chain)) } else { None };
+    let call_traces = if flags.include_call_traces { call_traces_to_proto(chain) } else { vec![] };
 
-    proto::Chain { blocks, state_diff: Some(state_diff), call_traces }
+    proto::Chain { blocks, state_diff, call_traces }
 }
 
 // ── block + receipts ─────────────────────────────────────────────────────────
 
-fn block_with_receipts_to_proto(
+pub(crate) fn block_with_receipts_to_proto(
     block: &reth_primitives_traits::RecoveredBlock<reth_ethereum_primitives::Block>,
     receipts: &[Receipt],
+    flags: &SubscribeFlags,
 ) -> proto::BlockWithReceipts {
-    let header = header_to_proto(block.header());
-    let senders: Vec<Vec<u8>> = block.senders().iter().map(|a| addr_to_bytes(*a)).collect();
-    let txs: Vec<proto::Transaction> = block
-        .body()
-        .transactions
-        .iter()
-        .map(tx_to_proto)
-        .collect();
-    let receipts: Vec<proto::Receipt> = receipts.iter().map(receipt_to_proto).collect();
-    let withdrawals = block
-        .body()
-        .withdrawals
-        .as_deref()
-        .map(|ws| ws.iter().map(withdrawal_to_proto).collect())
-        .unwrap_or_default();
+    let header = if flags.include_headers { Some(header_to_proto(block.header())) } else { None };
+    let (txs, senders) = if flags.include_transactions {
+        let txs = block.body().transactions.iter().map(tx_to_proto).collect();
+        let senders = block.senders().iter().map(|a| addr_to_bytes(*a)).collect();
+        (txs, senders)
+    } else {
+        (vec![], vec![])
+    };
+    let receipts: Vec<proto::Receipt> = if flags.include_receipts {
+        receipts.iter().map(receipt_to_proto).collect()
+    } else {
+        vec![]
+    };
+    let withdrawals: Vec<proto::Withdrawal> = if flags.include_withdrawals {
+        block
+            .body()
+            .withdrawals
+            .as_deref()
+            .map(|ws| ws.iter().map(withdrawal_to_proto).collect())
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
 
-    proto::BlockWithReceipts { header: Some(header), txs, senders, receipts, withdrawals }
+    proto::BlockWithReceipts { header, txs, senders, receipts, withdrawals }
 }
 
 // has_xxx / xxx field pairs encode proto3's lack of native optional scalars for post-merge fields.
@@ -438,5 +459,173 @@ fn call_log_frame_to_proto(l: &CallLogFrame) -> proto::CallLogFrame {
         position: l.position.unwrap_or(0),
         has_index: l.index.is_some(),
         index: l.index.unwrap_or(0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn all_false() -> SubscribeFlags {
+        SubscribeFlags {
+            include_headers: false,
+            include_transactions: false,
+            include_receipts: false,
+            include_withdrawals: false,
+            include_state_diff: false,
+            include_call_traces: false,
+        }
+    }
+
+    fn all_true() -> SubscribeFlags {
+        SubscribeFlags {
+            include_headers: true,
+            include_transactions: true,
+            include_receipts: true,
+            include_withdrawals: true,
+            include_state_diff: true,
+            include_call_traces: true,
+        }
+    }
+
+    // Applies flags to a fully-populated proto::Chain and returns it.
+    // This mirrors what chain_to_proto does for state_diff and call_traces,
+    // and what block_with_receipts_to_proto does for BlockWithReceipts fields.
+    fn apply_flags(flags: &SubscribeFlags) -> proto::Chain {
+        let full_header = proto::BlockHeader { number: 1, ..Default::default() };
+        let full_block = proto::BlockWithReceipts {
+            header: Some(full_header),
+            txs: vec![proto::Transaction::default()],
+            senders: vec![vec![0u8; 20]],
+            receipts: vec![proto::Receipt::default()],
+            withdrawals: vec![proto::Withdrawal::default()],
+        };
+        let full_state_diff = proto::StateDiff {
+            accounts: vec![proto::AccountDiff::default()],
+            ..Default::default()
+        };
+        let full_call_traces = vec![proto::BlockCallTraces {
+            block_number: 1,
+            txs: vec![proto::CallFrame::default()],
+        }];
+
+        // Simulate flag filtering on a pre-built full block
+        let header = if flags.include_headers { full_block.header.clone() } else { None };
+        let txs = if flags.include_transactions { full_block.txs.clone() } else { vec![] };
+        let senders = if flags.include_transactions { full_block.senders.clone() } else { vec![] };
+        let receipts = if flags.include_receipts { full_block.receipts.clone() } else { vec![] };
+        let withdrawals = if flags.include_withdrawals { full_block.withdrawals.clone() } else { vec![] };
+        let state_diff = if flags.include_state_diff { Some(full_state_diff) } else { None };
+        let call_traces = if flags.include_call_traces { full_call_traces } else { vec![] };
+
+        proto::Chain {
+            blocks: vec![proto::BlockWithReceipts { header, txs, senders, receipts, withdrawals }],
+            state_diff,
+            call_traces,
+        }
+    }
+
+    #[test]
+    fn test_flags_all_false_yields_empty_chain() {
+        let chain = apply_flags(&all_false());
+        let block = &chain.blocks[0];
+        assert!(block.header.is_none());
+        assert!(block.txs.is_empty());
+        assert!(block.senders.is_empty());
+        assert!(block.receipts.is_empty());
+        assert!(block.withdrawals.is_empty());
+        assert!(chain.state_diff.is_none());
+        assert!(chain.call_traces.is_empty());
+    }
+
+    #[test]
+    fn test_flags_all_true_yields_full_chain() {
+        let chain = apply_flags(&all_true());
+        let block = &chain.blocks[0];
+        assert!(block.header.is_some());
+        assert_eq!(block.txs.len(), 1);
+        assert_eq!(block.senders.len(), 1);
+        assert_eq!(block.receipts.len(), 1);
+        assert_eq!(block.withdrawals.len(), 1);
+        assert!(chain.state_diff.is_some());
+        assert_eq!(chain.call_traces.len(), 1);
+    }
+
+    #[test]
+    fn test_flag_include_headers_only() {
+        let flags = SubscribeFlags { include_headers: true, ..all_false() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.header.is_some());
+        assert!(block.txs.is_empty());
+        assert!(block.receipts.is_empty());
+        assert!(block.withdrawals.is_empty());
+        assert!(chain.state_diff.is_none());
+        assert!(chain.call_traces.is_empty());
+    }
+
+    #[test]
+    fn test_flag_include_transactions_only() {
+        let flags = SubscribeFlags { include_transactions: true, ..all_false() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.header.is_none());
+        assert_eq!(block.txs.len(), 1);
+        assert_eq!(block.senders.len(), 1, "senders must be bundled with txs");
+        assert!(block.receipts.is_empty());
+        assert!(block.withdrawals.is_empty());
+    }
+
+    #[test]
+    fn test_flag_include_receipts_only() {
+        let flags = SubscribeFlags { include_receipts: true, ..all_false() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.header.is_none());
+        assert!(block.txs.is_empty());
+        assert_eq!(block.receipts.len(), 1);
+        assert!(block.withdrawals.is_empty());
+    }
+
+    #[test]
+    fn test_flag_include_withdrawals_only() {
+        let flags = SubscribeFlags { include_withdrawals: true, ..all_false() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.header.is_none());
+        assert!(block.txs.is_empty());
+        assert!(block.receipts.is_empty());
+        assert_eq!(block.withdrawals.len(), 1);
+    }
+
+    #[test]
+    fn test_flag_include_state_diff_only() {
+        let flags = SubscribeFlags { include_state_diff: true, ..all_false() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.header.is_none());
+        assert!(block.txs.is_empty());
+        assert!(chain.state_diff.is_some());
+        assert!(chain.call_traces.is_empty());
+    }
+
+    #[test]
+    fn test_flag_include_call_traces_only() {
+        let flags = SubscribeFlags { include_call_traces: true, ..all_false() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.header.is_none());
+        assert!(block.txs.is_empty());
+        assert!(chain.state_diff.is_none());
+        assert_eq!(chain.call_traces.len(), 1);
+    }
+
+    #[test]
+    fn test_senders_absent_when_transactions_false() {
+        let flags = SubscribeFlags { include_transactions: false, ..all_true() };
+        let chain = apply_flags(&flags);
+        let block = &chain.blocks[0];
+        assert!(block.txs.is_empty());
+        assert!(block.senders.is_empty(), "senders must be empty when txs are excluded");
     }
 }

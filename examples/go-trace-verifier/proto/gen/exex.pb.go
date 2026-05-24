@@ -135,9 +135,15 @@ func (AccountRevertKind) EnumDescriptor() ([]byte, []int) {
 }
 
 type SubscribeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	IncludeHeaders      bool                   `protobuf:"varint,1,opt,name=include_headers,json=includeHeaders,proto3" json:"include_headers,omitempty"`                // BlockWithReceipts.header
+	IncludeTransactions bool                   `protobuf:"varint,2,opt,name=include_transactions,json=includeTransactions,proto3" json:"include_transactions,omitempty"` // BlockWithReceipts.txs + senders (always bundled)
+	IncludeReceipts     bool                   `protobuf:"varint,3,opt,name=include_receipts,json=includeReceipts,proto3" json:"include_receipts,omitempty"`             // BlockWithReceipts.receipts
+	IncludeWithdrawals  bool                   `protobuf:"varint,4,opt,name=include_withdrawals,json=includeWithdrawals,proto3" json:"include_withdrawals,omitempty"`    // BlockWithReceipts.withdrawals
+	IncludeStateDiff    bool                   `protobuf:"varint,5,opt,name=include_state_diff,json=includeStateDiff,proto3" json:"include_state_diff,omitempty"`        // Chain.state_diff
+	IncludeCallTraces   bool                   `protobuf:"varint,6,opt,name=include_call_traces,json=includeCallTraces,proto3" json:"include_call_traces,omitempty"`     // Chain.call_traces
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *SubscribeRequest) Reset() {
@@ -168,6 +174,48 @@ func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SubscribeRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeRequest) Descriptor() ([]byte, []int) {
 	return file_exex_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *SubscribeRequest) GetIncludeHeaders() bool {
+	if x != nil {
+		return x.IncludeHeaders
+	}
+	return false
+}
+
+func (x *SubscribeRequest) GetIncludeTransactions() bool {
+	if x != nil {
+		return x.IncludeTransactions
+	}
+	return false
+}
+
+func (x *SubscribeRequest) GetIncludeReceipts() bool {
+	if x != nil {
+		return x.IncludeReceipts
+	}
+	return false
+}
+
+func (x *SubscribeRequest) GetIncludeWithdrawals() bool {
+	if x != nil {
+		return x.IncludeWithdrawals
+	}
+	return false
+}
+
+func (x *SubscribeRequest) GetIncludeStateDiff() bool {
+	if x != nil {
+		return x.IncludeStateDiff
+	}
+	return false
+}
+
+func (x *SubscribeRequest) GetIncludeCallTraces() bool {
+	if x != nil {
+		return x.IncludeCallTraces
+	}
+	return false
 }
 
 // Top-level notification
@@ -2170,8 +2218,14 @@ var File_exex_proto protoreflect.FileDescriptor
 const file_exex_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"exex.proto\x12\x04exex\"\x12\n" +
-	"\x10SubscribeRequest\"\xd1\x01\n" +
+	"exex.proto\x12\x04exex\"\xa8\x02\n" +
+	"\x10SubscribeRequest\x12'\n" +
+	"\x0finclude_headers\x18\x01 \x01(\bR\x0eincludeHeaders\x121\n" +
+	"\x14include_transactions\x18\x02 \x01(\bR\x13includeTransactions\x12)\n" +
+	"\x10include_receipts\x18\x03 \x01(\bR\x0fincludeReceipts\x12/\n" +
+	"\x13include_withdrawals\x18\x04 \x01(\bR\x12includeWithdrawals\x12,\n" +
+	"\x12include_state_diff\x18\x05 \x01(\bR\x10includeStateDiff\x12.\n" +
+	"\x13include_call_traces\x18\x06 \x01(\bR\x11includeCallTraces\"\xd1\x01\n" +
 	"\fNotification\x12?\n" +
 	"\x0fchain_committed\x18\x01 \x01(\v2\x14.exex.ChainCommittedH\x00R\x0echainCommitted\x129\n" +
 	"\rchain_reorged\x18\x02 \x01(\v2\x12.exex.ChainReorgedH\x00R\fchainReorged\x12<\n" +

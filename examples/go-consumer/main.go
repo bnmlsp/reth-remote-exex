@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -21,9 +22,17 @@ import (
 const maxRecvMsgSize = 64 * 1024 * 1024
 
 func main() {
+	headers      := flag.Bool("headers", false, "subscribe to block headers")
+	transactions := flag.Bool("transactions", false, "subscribe to transactions and senders")
+	receipts     := flag.Bool("receipts", false, "subscribe to receipts")
+	withdrawals  := flag.Bool("withdrawals", false, "subscribe to withdrawals")
+	stateDiff    := flag.Bool("state-diff", false, "subscribe to state diffs")
+	callTraces   := flag.Bool("call-traces", false, "subscribe to call traces")
+	flag.Parse()
+
 	addr := "[::1]:10000"
-	if len(os.Args) > 1 {
-		addr = os.Args[1]
+	if flag.NArg() > 0 {
+		addr = flag.Arg(0)
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxRecvMsgSize)))
@@ -37,7 +46,14 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	stream, err := client.Subscribe(ctx, &pb.SubscribeRequest{})
+	stream, err := client.Subscribe(ctx, &pb.SubscribeRequest{
+		IncludeHeaders:      *headers,
+		IncludeTransactions: *transactions,
+		IncludeReceipts:     *receipts,
+		IncludeWithdrawals:  *withdrawals,
+		IncludeStateDiff:    *stateDiff,
+		IncludeCallTraces:   *callTraces,
+	})
 	if err != nil {
 		log.Fatalf("subscribe failed: %v", err)
 	}
@@ -91,54 +107,57 @@ func printChain(label string, chain *pb.Chain) {
 	fmt.Printf("=== %s | %d blocks ===\n", label, len(chain.Blocks))
 	for _, bwr := range chain.Blocks {
 		hdr := bwr.Header
+		var blockNum uint64
+		if hdr != nil {
+			blockNum = hdr.Number
+		}
 		fmt.Printf("  block #%d  txs=%d  receipts=%d  withdrawals=%d\n",
-			hdr.Number, len(bwr.Txs), len(bwr.Receipts), len(bwr.Withdrawals))
+			blockNum, len(bwr.Txs), len(bwr.Receipts), len(bwr.Withdrawals))
 	}
 
 	sd := chain.StateDiff
 	if sd == nil {
 		fmt.Println("  state_diff: (nil)")
-		return
-	}
+	} else {
+		fmt.Printf("  state_diff: accounts=%d  contracts=%d  revert_blocks=%d\n",
+			len(sd.Accounts), len(sd.Contracts), len(sd.Reverts))
 
-	fmt.Printf("  state_diff: accounts=%d  contracts=%d  revert_blocks=%d\n",
-		len(sd.Accounts), len(sd.Contracts), len(sd.Reverts))
-
-	// accounts
-	for i, acc := range sd.Accounts {
-		fmt.Printf("    account[%d] addr=%s  status=%s\n", i, hexBytes(acc.Address), acc.Status.String())
-		if acc.OriginalInfo != nil {
-			fmt.Printf("      original: balance=%s  nonce=%d  code_hash=%s\n",
-				hexBytes(acc.OriginalInfo.Balance), acc.OriginalInfo.Nonce, hexBytes(acc.OriginalInfo.CodeHash))
+		// accounts
+		for i, acc := range sd.Accounts {
+			fmt.Printf("    account[%d] addr=%s  status=%s\n", i, hexBytes(acc.Address), acc.Status.String())
+			if acc.OriginalInfo != nil {
+				fmt.Printf("      original: balance=%s  nonce=%d  code_hash=%s\n",
+					hexBytes(acc.OriginalInfo.Balance), acc.OriginalInfo.Nonce, hexBytes(acc.OriginalInfo.CodeHash))
+			}
+			if acc.Info != nil {
+				fmt.Printf("      current:  balance=%s  nonce=%d  code_hash=%s\n",
+					hexBytes(acc.Info.Balance), acc.Info.Nonce, hexBytes(acc.Info.CodeHash))
+			}
+			for j, slot := range acc.Storage {
+				fmt.Printf("      storage[%d] key=%s  %s -> %s\n",
+					j, hexBytes(slot.Key), hexBytes(slot.Previous), hexBytes(slot.Current))
+			}
 		}
-		if acc.Info != nil {
-			fmt.Printf("      current:  balance=%s  nonce=%d  code_hash=%s\n",
-				hexBytes(acc.Info.Balance), acc.Info.Nonce, hexBytes(acc.Info.CodeHash))
-		}
-		for j, slot := range acc.Storage {
-			fmt.Printf("      storage[%d] key=%s  %s -> %s\n",
-				j, hexBytes(slot.Key), hexBytes(slot.Previous), hexBytes(slot.Current))
-		}
-	}
 
-	// contracts (new/changed bytecode)
-	for i, c := range sd.Contracts {
-		fmt.Printf("    contract[%d] code_hash=%s  bytecode_len=%d\n",
-			i, hexBytes(c.CodeHash), len(c.Bytecode))
-	}
+		// contracts (new/changed bytecode)
+		for i, c := range sd.Contracts {
+			fmt.Printf("    contract[%d] code_hash=%s  bytecode_len=%d\n",
+				i, hexBytes(c.CodeHash), len(c.Bytecode))
+		}
 
-	// reverts (per-block)
-	for i, br := range sd.Reverts {
-		fmt.Printf("    revert_block[%d]: %d account reverts\n", i, len(br.Accounts))
-		for j, ar := range br.Accounts {
-			fmt.Printf("      revert[%d] addr=%s  kind=%s  wipe_storage=%v\n",
-				j, hexBytes(ar.Address), ar.Kind.String(), ar.WipeStorage)
-			for k, sr := range ar.Storage {
-				switch rv := sr.RevertTo.(type) {
-				case *pb.StorageRevert_Value:
-					fmt.Printf("        storage_revert[%d] key=%s -> value=%s\n", k, hexBytes(sr.Key), hexBytes(rv.Value))
-				case *pb.StorageRevert_Destroyed:
-					fmt.Printf("        storage_revert[%d] key=%s -> destroyed\n", k, hexBytes(sr.Key))
+		// reverts (per-block)
+		for i, br := range sd.Reverts {
+			fmt.Printf("    revert_block[%d]: %d account reverts\n", i, len(br.Accounts))
+			for j, ar := range br.Accounts {
+				fmt.Printf("      revert[%d] addr=%s  kind=%s  wipe_storage=%v\n",
+					j, hexBytes(ar.Address), ar.Kind.String(), ar.WipeStorage)
+				for k, sr := range ar.Storage {
+					switch rv := sr.RevertTo.(type) {
+					case *pb.StorageRevert_Value:
+						fmt.Printf("        storage_revert[%d] key=%s -> value=%s\n", k, hexBytes(sr.Key), hexBytes(rv.Value))
+					case *pb.StorageRevert_Destroyed:
+						fmt.Printf("        storage_revert[%d] key=%s -> destroyed\n", k, hexBytes(sr.Key))
+					}
 				}
 			}
 		}

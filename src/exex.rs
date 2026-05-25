@@ -6,7 +6,8 @@ use reth_remote_exex::{
     },
 };
 use tokio::sync::broadcast::error::RecvError;
-use futures_util::TryStreamExt;
+use futures_util::StreamExt;
+use reth::providers::{CanonStateNotification, CanonStateSubscriptions};
 use reth::{builder::NodeTypes, primitives::EthPrimitives};
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
 use reth_node_api::FullNodeComponents;
@@ -76,16 +77,19 @@ impl RemoteExEx for ExExService {
 
 /// ExEx loop: receives chain notifications from reth and forwards them to the broadcast channel.
 async fn remote_exex<Node: FullNodeComponents<Types: NodeTypes<Primitives = EthPrimitives>>>(
-    mut ctx: ExExContext<Node>,
+    ctx: ExExContext<Node>,
     notifications: Arc<broadcast::Sender<Arc<ExExNotification>>>,
 ) -> eyre::Result<()> {
-    while let Some(notification) = ctx.notifications.try_next().await? {
-        if let Some(committed_chain) = notification.committed_chain() {
-            ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().num_hash()))?;
+    info!("ExEx started, subscribing to canonical state stream");
+    let mut stream = ctx.provider().canonical_state_stream();
+    while let Some(canon_notification) = stream.next().await {
+        if let CanonStateNotification::Commit { new } = &canon_notification {
+            ctx.events.send(ExExEvent::FinishedHeight(new.tip().num_hash()))?;
         }
         // Err means no active subscribers; dropping the notification is intentional.
-        let _ = notifications.send(Arc::new(notification));
+        let _ = notifications.send(Arc::new(ExExNotification::from(canon_notification)));
     }
+    info!("ExEx canonical state stream ended");
     Ok(())
 }
 

@@ -13,3 +13,4 @@ pub mod proto {
     tonic::include_proto!("exex");
 }
 pub mod convert;
+pub mod server;

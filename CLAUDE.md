@@ -119,3 +119,4 @@ Requirements → Design → Coding → Testing → Compliance Review → Quality
 | go-trace-verifier | ✅ Complete (commit c7eb605) |
 | SubscribeRequest field filtering | ✅ Complete (commit 9fa3ee7) |
 | Base chain support (feature flag) | ✅ Step 1 complete — feature flag, proto, convert, tests all pass |
+| Base ExEx Integration (Step 2) | 🔧 In progress — coding phase |

@@ -5,44 +5,46 @@ edition = "2021"
 
 [features]
 default = ["eth"]
-eth = ["dep:reth-node-ethereum", "dep:reth-ethereum-primitives"]
+eth = ["dep:reth-ethereum-cli", "dep:reth-node-ethereum", "dep:reth-ethereum-primitives"]
 base = ["dep:base-common-consensus"]
 
 [dependencies]
-reth = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", features = ["serde"] }
 reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
+reth-provider = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", features = ["traces"] }
-reth-primitives-traits = "=0.4.1"
+reth-primitives-traits = "0.4"
 
 # ETH-only
+reth-ethereum-cli = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
 reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
 reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
 
 # Base-only
 base-common-consensus = { git = "https://github.com/bnmlsp/base.git", branch = "dev-exex-internal-txs-v2.3.0", default-features = false, features = ["reth"], optional = true }
 
-alloy-consensus = "=2.0.5"
-alloy-rpc-types-trace = "=2.0.5"
-alloy-primitives = "=1.6.0"
-alloy-eips = "=2.0.5"
-alloy-eip2930 = "=0.2.3"
-alloy-eip7702 = "=0.6.3"
-revm-database = "=15.0.2"
-revm-state = "=12.0.1"
+alloy-consensus = "2.0"
+alloy-rpc-types-trace = "2.0"
+alloy-primitives = "1.6"
+alloy-eips = "2.0"
+alloy-eip2930 = "0.2"
+alloy-eip7702 = "0.6"
+revm-database = "15"
+revm-state = "12"
 
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 futures-util = "0.3"
 
-tonic = "0.11"
-prost = "0.12"
+tonic = "0.14"
+tonic-prost = "0.14"
+prost = "0.14"
 
 eyre = "0.6"
 
 [build-dependencies]
-tonic-build = "0.11"
+tonic-prost-build = "0.14"
 
 [[bin]]
 name = "exex"

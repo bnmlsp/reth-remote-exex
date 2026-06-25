@@ -3,15 +3,25 @@ name = "reth-remote-exex"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["eth"]
+eth = ["dep:reth-node-ethereum", "dep:reth-ethereum-primitives"]
+base = ["dep:base-common-consensus"]
+
 [dependencies]
 reth = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", features = ["serde"] }
-reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", features = ["traces"] }
-reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
 reth-primitives-traits = "=0.4.1"
+
+# ETH-only
+reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
+reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
+
+# Base-only
+base-common-consensus = { git = "https://github.com/bnmlsp/base.git", branch = "dev-exex-internal-txs-v2.3.0", default-features = false, features = ["reth"], optional = true }
 
 alloy-consensus = "=2.0.5"
 alloy-rpc-types-trace = "=2.0.5"

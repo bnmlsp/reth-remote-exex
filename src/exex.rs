@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "base", allow(unused_imports, dead_code, unused_variables))]
+
 use reth_remote_exex::{
     convert::{notification_to_proto, SubscribeFlags},
     proto::{
@@ -8,16 +10,28 @@ use reth_remote_exex::{
 use tokio::sync::broadcast::error::RecvError;
 use futures_util::StreamExt;
 use reth::providers::{CanonStateNotification, CanonStateSubscriptions};
-use reth::{builder::NodeTypes, primitives::EthPrimitives};
+use reth::builder::NodeTypes;
 use reth_exex::{ExExContext, ExExEvent, ExExNotification};
 use reth_node_api::FullNodeComponents;
-use reth_node_ethereum::EthereumNode;
 use reth_tracing::tracing::{info, warn};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
+
+#[cfg(feature = "eth")]
+use reth_node_ethereum::EthereumNode;
+#[cfg(feature = "eth")]
+use reth_ethereum_primitives::EthPrimitives;
+
+#[cfg(feature = "base")]
+use base_common_consensus::BasePrimitives;
+
+#[cfg(feature = "eth")]
+type Primitives = EthPrimitives;
+#[cfg(feature = "base")]
+type Primitives = BasePrimitives;
 
 /// Capacity of the broadcast channel from the ExEx loop to all gRPC subscribers.
 /// When the channel is full, lagged subscribers will miss notifications.
@@ -28,7 +42,7 @@ const PER_CLIENT_CHANNEL_CAPACITY: usize = 16;
 
 /// gRPC service that fans out ExEx notifications to connected subscribers.
 struct ExExService {
-    notifications: Arc<broadcast::Sender<Arc<ExExNotification>>>,
+    notifications: Arc<broadcast::Sender<Arc<ExExNotification<Primitives>>>>,
 }
 
 #[tonic::async_trait]
@@ -76,9 +90,9 @@ impl RemoteExEx for ExExService {
 }
 
 /// ExEx loop: receives chain notifications from reth and forwards them to the broadcast channel.
-async fn remote_exex<Node: FullNodeComponents<Types: NodeTypes<Primitives = EthPrimitives>>>(
+async fn remote_exex<Node: FullNodeComponents<Types: NodeTypes<Primitives = Primitives>>>(
     ctx: ExExContext<Node>,
-    notifications: Arc<broadcast::Sender<Arc<ExExNotification>>>,
+    notifications: Arc<broadcast::Sender<Arc<ExExNotification<Primitives>>>>,
 ) -> eyre::Result<()> {
     info!("ExEx started, subscribing to canonical state stream");
     let mut stream = ctx.provider().canonical_state_stream();
@@ -93,9 +107,10 @@ async fn remote_exex<Node: FullNodeComponents<Types: NodeTypes<Primitives = EthP
     Ok(())
 }
 
+#[cfg(feature = "eth")]
 fn main() -> eyre::Result<()> {
     reth::cli::Cli::parse_args().run(async move |builder, _| {
-        let notifications = Arc::new(broadcast::channel::<Arc<ExExNotification>>(BROADCAST_CHANNEL_CAPACITY).0);
+        let notifications = Arc::new(broadcast::channel::<Arc<ExExNotification<Primitives>>>(BROADCAST_CHANNEL_CAPACITY).0);
 
         let server = Server::builder()
             .add_service(RemoteExExServer::new(ExExService {
@@ -118,4 +133,10 @@ fn main() -> eyre::Result<()> {
 
         handle.wait_for_node_exit().await
     })
+}
+
+#[cfg(feature = "base")]
+fn main() -> eyre::Result<()> {
+    eprintln!("error: the 'base' binary is not standalone — Base ExEx is integrated into bnmlsp/base");
+    std::process::exit(1);
 }

@@ -118,3 +118,4 @@ Requirements → Design → Coding → Testing → Compliance Review → Quality
 | ExEx gRPC push server (v1.0) | ✅ Complete (commit 683fed6) |
 | go-trace-verifier | ✅ Complete (commit c7eb605) |
 | SubscribeRequest field filtering | ✅ Complete (commit 9fa3ee7) |
+| Base chain support (feature flag) | ✅ Step 1 complete — feature flag, proto, convert, tests all pass |

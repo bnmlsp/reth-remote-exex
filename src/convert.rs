@@ -14,12 +14,30 @@ pub struct SubscribeFlags {
 }
 use alloy_primitives::{Address, U256, B256};
 use alloy_rpc_types_trace::geth::{CallFrame, CallLogFrame};
-use reth_ethereum_primitives::{Receipt, TransactionSigned};
 use reth_execution_types::Chain;
 use reth_exex::ExExNotification;
 use revm_database::states::{AccountRevert, AccountStatus, BundleAccount, RevertToSlot};
 use revm_database::states::reverts::AccountInfoRevert;
 use revm_state::AccountInfo;
+
+#[cfg(feature = "eth")]
+use reth_ethereum_primitives::{Receipt, TransactionSigned};
+
+#[cfg(feature = "base")]
+use base_common_consensus::{BaseTxEnvelope, BaseReceipt, BaseBlock, BasePrimitives};
+
+#[cfg(feature = "eth")]
+type Primitives = reth_ethereum_primitives::EthPrimitives;
+#[cfg(feature = "eth")]
+type BlockType = reth_ethereum_primitives::Block;
+
+#[cfg(feature = "base")]
+type Primitives = BasePrimitives;
+#[cfg(feature = "base")]
+type BlockType = BaseBlock;
+
+#[cfg(feature = "base")]
+const DEPOSIT_TX_TYPE: u32 = 126;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,7 +60,7 @@ fn u128_to_bytes(v: u128) -> Vec<u8> {
 // ── notification ─────────────────────────────────────────────────────────────
 
 /// Converts an [`ExExNotification`] to its protobuf representation for gRPC streaming.
-pub fn notification_to_proto(notif: &ExExNotification, flags: &SubscribeFlags) -> proto::Notification {
+pub fn notification_to_proto(notif: &ExExNotification<Primitives>, flags: &SubscribeFlags) -> proto::Notification {
     use reth_exex::ExExNotification::*;
     let event = match notif {
         ChainCommitted { new } => proto::notification::Event::ChainCommitted(proto::ChainCommitted {
@@ -61,7 +79,7 @@ pub fn notification_to_proto(notif: &ExExNotification, flags: &SubscribeFlags) -
 
 // ── chain ────────────────────────────────────────────────────────────────────
 
-pub(crate) fn chain_to_proto(chain: &Chain, flags: &SubscribeFlags) -> proto::Chain {
+pub(crate) fn chain_to_proto(chain: &Chain<Primitives>, flags: &SubscribeFlags) -> proto::Chain {
     let blocks = chain
         .blocks_and_receipts()
         .map(|(block, receipts)| block_with_receipts_to_proto(block, receipts, flags))
@@ -76,8 +94,8 @@ pub(crate) fn chain_to_proto(chain: &Chain, flags: &SubscribeFlags) -> proto::Ch
 // ── block + receipts ─────────────────────────────────────────────────────────
 
 pub(crate) fn block_with_receipts_to_proto(
-    block: &reth_primitives_traits::RecoveredBlock<reth_ethereum_primitives::Block>,
-    receipts: &[Receipt],
+    block: &reth_primitives_traits::RecoveredBlock<BlockType>,
+    receipts: &[<Primitives as reth_primitives_traits::NodePrimitives>::Receipt],
     flags: &SubscribeFlags,
 ) -> proto::BlockWithReceipts {
     let header = if flags.include_headers { Some(header_to_proto(block.header())) } else { None };
@@ -151,6 +169,7 @@ fn withdrawal_to_proto(w: &alloy_eips::eip4895::Withdrawal) -> proto::Withdrawal
 
 // ── transaction ───────────────────────────────────────────────────────────────
 
+#[cfg(feature = "eth")]
 fn tx_to_proto(tx: &TransactionSigned) -> proto::Transaction {
     use alloy_consensus::EthereumTxEnvelope::*;
     match tx {
@@ -267,12 +286,105 @@ fn auth_to_proto(auth: &alloy_eip7702::SignedAuthorization) -> proto::SignedAuth
 
 // ── receipt ───────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "eth")]
 fn receipt_to_proto(r: &Receipt) -> proto::Receipt {
     proto::Receipt {
         tx_type: r.tx_type as u32,
         success: r.success,
         cumulative_gas_used: r.cumulative_gas_used,
         logs: r.logs.iter().map(log_to_proto).collect(),
+        ..Default::default()
+    }
+}
+
+#[cfg(feature = "base")]
+fn tx_to_proto(tx: &BaseTxEnvelope) -> proto::Transaction {
+    use base_common_consensus::BaseTxEnvelope::*;
+    match tx {
+        Legacy(signed) => {
+            let t = signed.tx();
+            proto::Transaction {
+                chain_id: t.chain_id.map(|c| c.to_be_bytes().to_vec()).unwrap_or_default(),
+                gas_price: u128_to_bytes(t.gas_price),
+                ..tx_common_fields(0, signed.hash(), signed.signature(), t.nonce, t.gas_limit, t.value, &t.input, txkind_to_bytes(&t.to))
+            }
+        }
+        Eip2930(signed) => {
+            let t = signed.tx();
+            proto::Transaction {
+                chain_id: t.chain_id.to_be_bytes().to_vec(),
+                gas_price: u128_to_bytes(t.gas_price),
+                access_list: access_list_to_proto(&t.access_list),
+                ..tx_common_fields(1, signed.hash(), signed.signature(), t.nonce, t.gas_limit, t.value, &t.input, txkind_to_bytes(&t.to))
+            }
+        }
+        Eip1559(signed) => {
+            let t = signed.tx();
+            proto::Transaction {
+                chain_id: t.chain_id.to_be_bytes().to_vec(),
+                max_fee_per_gas: u128_to_bytes(t.max_fee_per_gas),
+                max_priority_fee_per_gas: u128_to_bytes(t.max_priority_fee_per_gas),
+                access_list: access_list_to_proto(&t.access_list),
+                ..tx_common_fields(2, signed.hash(), signed.signature(), t.nonce, t.gas_limit, t.value, &t.input, txkind_to_bytes(&t.to))
+            }
+        }
+        Eip7702(signed) => {
+            let t = signed.tx();
+            proto::Transaction {
+                chain_id: t.chain_id.to_be_bytes().to_vec(),
+                max_fee_per_gas: u128_to_bytes(t.max_fee_per_gas),
+                max_priority_fee_per_gas: u128_to_bytes(t.max_priority_fee_per_gas),
+                access_list: access_list_to_proto(&t.access_list),
+                authorization_list: t.authorization_list.iter().map(auth_to_proto).collect(),
+                ..tx_common_fields(4, signed.hash(), signed.signature(), t.nonce, t.gas_limit, t.value, &t.input, t.to.as_slice().to_vec())
+            }
+        }
+        Deposit(sealed) => {
+            let t = sealed.inner();
+            proto::Transaction {
+                hash: sealed.hash_ref().as_slice().to_vec(),
+                tx_type: DEPOSIT_TX_TYPE,
+                signature: None,
+                nonce: 0,
+                gas_limit: t.gas_limit,
+                value: u256_to_bytes(t.value),
+                input: t.input.to_vec(),
+                to: txkind_to_bytes(&t.to),
+                source_hash: t.source_hash.as_slice().to_vec(),
+                mint: if t.mint == 0 { vec![] } else { u128_to_bytes(t.mint) },
+                is_system_transaction: t.is_system_transaction,
+                ..Default::default()
+            }
+        }
+        Eip8130(_) => unimplemented!("EIP-8130 transaction serialization is not supported"),
+    }
+}
+
+#[cfg(feature = "base")]
+fn receipt_to_proto(r: &BaseReceipt) -> proto::Receipt {
+    let inner = r.as_receipt();
+    let tx_type = r.tx_type() as u8 as u32;
+    let (has_deposit_nonce, deposit_nonce, has_deposit_receipt_version, deposit_receipt_version) =
+        if let BaseReceipt::Deposit(deposit) = r {
+            (
+                deposit.deposit_nonce.is_some(),
+                deposit.deposit_nonce.unwrap_or(0),
+                deposit.deposit_receipt_version.is_some(),
+                deposit.deposit_receipt_version.unwrap_or(0),
+            )
+        } else {
+            (false, 0, false, 0)
+        };
+
+    proto::Receipt {
+        tx_type,
+        success: inner.status.coerce_status(),
+        cumulative_gas_used: inner.cumulative_gas_used,
+        logs: inner.logs.iter().map(log_to_proto).collect(),
+        has_deposit_nonce,
+        deposit_nonce,
+        has_deposit_receipt_version,
+        deposit_receipt_version,
     }
 }
 
@@ -286,7 +398,7 @@ fn log_to_proto(log: &alloy_primitives::Log) -> proto::EventLog {
 
 // ── state diff ────────────────────────────────────────────────────────────────
 
-fn state_diff_to_proto(chain: &Chain) -> proto::StateDiff {
+fn state_diff_to_proto(chain: &Chain<Primitives>) -> proto::StateDiff {
     let outcome = chain.execution_outcome();
     let bundle = &outcome.bundle;
 
@@ -403,7 +515,7 @@ fn account_revert_to_proto(addr: &Address, revert: &AccountRevert) -> proto::Acc
 
 // ── call traces ───────────────────────────────────────────────────────────────
 
-fn call_traces_to_proto(chain: &Chain) -> Vec<proto::BlockCallTraces> {
+fn call_traces_to_proto(chain: &Chain<Primitives>) -> Vec<proto::BlockCallTraces> {
     let Some(traces) = chain.call_traces() else {
         return vec![];
     };
@@ -627,5 +739,243 @@ mod tests {
         let block = &chain.blocks[0];
         assert!(block.txs.is_empty());
         assert!(block.senders.is_empty(), "senders must be empty when txs are excluded");
+    }
+}
+
+#[cfg(all(test, feature = "base"))]
+mod base_tests {
+    use super::*;
+    use alloy_consensus::{Receipt, Sealed};
+    use alloy_primitives::{Address, Bytes, Log, B256, U256};
+    use base_common_consensus::{BaseTxEnvelope, BaseReceipt, DepositReceipt, TxDeposit};
+
+    fn make_deposit_tx() -> BaseTxEnvelope {
+        let tx = TxDeposit {
+            source_hash: B256::from([0xab; 32]),
+            from: Address::from([0x01; 20]),
+            to: alloy_primitives::TxKind::Call(Address::from([0x02; 20])),
+            mint: 1_000_000_000_000_000_000u128,
+            value: U256::from(500u64),
+            gas_limit: 21000,
+            is_system_transaction: false,
+            input: Bytes::from(vec![0xde, 0xad]),
+        };
+        BaseTxEnvelope::Deposit(Sealed::new(tx))
+    }
+
+    fn make_deposit_tx_zero_mint() -> BaseTxEnvelope {
+        let tx = TxDeposit {
+            source_hash: B256::from([0xcc; 32]),
+            from: Address::from([0x03; 20]),
+            to: alloy_primitives::TxKind::Call(Address::from([0x04; 20])),
+            mint: 0,
+            value: U256::ZERO,
+            gas_limit: 100000,
+            is_system_transaction: true,
+            input: Bytes::new(),
+        };
+        BaseTxEnvelope::Deposit(Sealed::new(tx))
+    }
+
+    fn make_deposit_tx_create() -> BaseTxEnvelope {
+        let tx = TxDeposit {
+            source_hash: B256::from([0xdd; 32]),
+            from: Address::from([0x05; 20]),
+            to: alloy_primitives::TxKind::Create,
+            mint: 0,
+            value: U256::ZERO,
+            gas_limit: 500000,
+            is_system_transaction: false,
+            input: Bytes::from(vec![0x60, 0x80]),
+        };
+        BaseTxEnvelope::Deposit(Sealed::new(tx))
+    }
+
+    #[test]
+    fn test_deposit_tx_to_proto() {
+        let tx = make_deposit_tx();
+        let proto = tx_to_proto(&tx);
+        assert_eq!(proto.tx_type, 126);
+        assert!(proto.signature.is_none());
+        assert_eq!(proto.nonce, 0);
+        assert_eq!(proto.gas_limit, 21000);
+        assert_eq!(proto.source_hash, vec![0xab; 32]);
+        assert!(!proto.mint.is_empty());
+        assert_eq!(proto.mint, u128_to_bytes(1_000_000_000_000_000_000u128));
+        assert!(!proto.is_system_transaction);
+        assert_eq!(proto.input, vec![0xde, 0xad]);
+        assert_eq!(proto.to, Address::from([0x02; 20]).as_slice().to_vec());
+    }
+
+    #[test]
+    fn test_deposit_tx_zero_mint() {
+        let tx = make_deposit_tx_zero_mint();
+        let proto = tx_to_proto(&tx);
+        assert_eq!(proto.tx_type, 126);
+        assert!(proto.mint.is_empty());
+        assert!(proto.is_system_transaction);
+    }
+
+    #[test]
+    fn test_deposit_tx_create() {
+        let tx = make_deposit_tx_create();
+        let proto = tx_to_proto(&tx);
+        assert_eq!(proto.tx_type, 126);
+        assert!(proto.to.is_empty());
+    }
+
+    #[test]
+    fn test_deposit_receipt_with_nonce() {
+        let receipt = BaseReceipt::Deposit(DepositReceipt {
+            inner: Receipt {
+                status: true.into(),
+                cumulative_gas_used: 42000,
+                logs: vec![],
+            },
+            deposit_nonce: Some(42),
+            deposit_receipt_version: Some(1),
+        });
+        let proto = receipt_to_proto(&receipt);
+        assert_eq!(proto.tx_type, 126);
+        assert!(proto.success);
+        assert_eq!(proto.cumulative_gas_used, 42000);
+        assert!(proto.has_deposit_nonce);
+        assert_eq!(proto.deposit_nonce, 42);
+        assert!(proto.has_deposit_receipt_version);
+        assert_eq!(proto.deposit_receipt_version, 1);
+    }
+
+    #[test]
+    fn test_deposit_receipt_without_nonce() {
+        let receipt = BaseReceipt::Deposit(DepositReceipt {
+            inner: Receipt {
+                status: true.into(),
+                cumulative_gas_used: 21000,
+                logs: vec![],
+            },
+            deposit_nonce: None,
+            deposit_receipt_version: None,
+        });
+        let proto = receipt_to_proto(&receipt);
+        assert_eq!(proto.tx_type, 126);
+        assert!(!proto.has_deposit_nonce);
+        assert_eq!(proto.deposit_nonce, 0);
+        assert!(!proto.has_deposit_receipt_version);
+        assert_eq!(proto.deposit_receipt_version, 0);
+    }
+
+    #[test]
+    fn test_base_receipt_legacy() {
+        let receipt = BaseReceipt::Legacy(Receipt {
+            status: true.into(),
+            cumulative_gas_used: 100000,
+            logs: vec![Log::new(Address::from([0x01; 20]), vec![], Bytes::new()).unwrap_or_default()],
+        });
+        let proto = receipt_to_proto(&receipt);
+        assert_eq!(proto.tx_type, 0);
+        assert!(proto.success);
+        assert_eq!(proto.cumulative_gas_used, 100000);
+        assert_eq!(proto.logs.len(), 1);
+        assert!(!proto.has_deposit_nonce);
+        assert!(!proto.has_deposit_receipt_version);
+    }
+
+    #[test]
+    fn test_base_receipt_eip1559() {
+        let receipt = BaseReceipt::Eip1559(Receipt {
+            status: false.into(),
+            cumulative_gas_used: 200000,
+            logs: vec![],
+        });
+        let proto = receipt_to_proto(&receipt);
+        assert_eq!(proto.tx_type, 2);
+        assert!(!proto.success);
+        assert_eq!(proto.cumulative_gas_used, 200000);
+        assert!(!proto.has_deposit_nonce);
+    }
+
+    #[test]
+    fn test_base_receipt_eip2930() {
+        let receipt = BaseReceipt::Eip2930(Receipt {
+            status: true.into(),
+            cumulative_gas_used: 150000,
+            logs: vec![],
+        });
+        let proto = receipt_to_proto(&receipt);
+        assert_eq!(proto.tx_type, 1);
+        assert!(proto.success);
+        assert!(!proto.has_deposit_nonce);
+    }
+
+    #[test]
+    fn test_base_receipt_eip7702() {
+        let receipt = BaseReceipt::Eip7702(Receipt {
+            status: true.into(),
+            cumulative_gas_used: 180000,
+            logs: vec![],
+        });
+        let proto = receipt_to_proto(&receipt);
+        assert_eq!(proto.tx_type, 4);
+        assert!(proto.success);
+        assert!(!proto.has_deposit_nonce);
+    }
+
+    #[test]
+    fn test_base_tx_legacy() {
+        use alloy_consensus::{Signed, TxLegacy};
+        use alloy_primitives::Signature;
+
+        let tx = TxLegacy {
+            chain_id: Some(8453),
+            nonce: 7,
+            gas_price: 1_000_000_000,
+            gas_limit: 21000,
+            to: alloy_primitives::TxKind::Call(Address::from([0xaa; 20])),
+            value: U256::from(1_000_000u64),
+            input: Bytes::from(vec![0x01, 0x02]),
+        };
+        let sig = Signature::new(U256::from(1u64), U256::from(2u64), false);
+        let signed = Signed::new_unhashed(tx, sig);
+        let envelope = BaseTxEnvelope::Legacy(signed);
+
+        let proto = tx_to_proto(&envelope);
+        assert_eq!(proto.tx_type, 0);
+        assert!(proto.signature.is_some());
+        assert_eq!(proto.nonce, 7);
+        assert_eq!(proto.gas_limit, 21000);
+        assert_eq!(proto.chain_id, 8453u64.to_be_bytes().to_vec());
+        assert_eq!(proto.to, Address::from([0xaa; 20]).as_slice().to_vec());
+        assert_eq!(proto.input, vec![0x01, 0x02]);
+    }
+
+    #[test]
+    fn test_base_tx_eip1559() {
+        use alloy_consensus::{Signed, TxEip1559};
+        use alloy_primitives::Signature;
+
+        let tx = TxEip1559 {
+            chain_id: 8453,
+            nonce: 42,
+            gas_limit: 100000,
+            max_fee_per_gas: 50_000_000_000,
+            max_priority_fee_per_gas: 1_000_000_000,
+            to: alloy_primitives::TxKind::Call(Address::from([0xbb; 20])),
+            value: U256::from(500u64),
+            input: Bytes::from(vec![0xab, 0xcd]),
+            access_list: Default::default(),
+        };
+        let sig = Signature::new(U256::from(3u64), U256::from(4u64), true);
+        let signed = Signed::new_unhashed(tx, sig);
+        let envelope = BaseTxEnvelope::Eip1559(signed);
+
+        let proto = tx_to_proto(&envelope);
+        assert_eq!(proto.tx_type, 2);
+        assert!(proto.signature.is_some());
+        assert_eq!(proto.nonce, 42);
+        assert_eq!(proto.gas_limit, 100000);
+        assert_eq!(proto.max_fee_per_gas, u128_to_bytes(50_000_000_000));
+        assert_eq!(proto.max_priority_fee_per_gas, u128_to_bytes(1_000_000_000));
+        assert_eq!(proto.chain_id, 8453u64.to_be_bytes().to_vec());
+        assert_eq!(proto.to, Address::from([0xbb; 20]).as_slice().to_vec());
     }
 }

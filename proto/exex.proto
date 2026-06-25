@@ -90,7 +90,7 @@ message Withdrawal {
 
 message Transaction {
   bytes  hash      = 1;  // B256 32 bytes
-  uint32 tx_type   = 2;  // 0=Legacy 1=2930 2=1559 3=4844 4=7702
+  uint32 tx_type   = 2;  // 0=Legacy 1=2930 2=1559 3=4844 4=7702 126=Deposit
   Signature signature = 3;
 
   // common fields
@@ -119,6 +119,11 @@ message Transaction {
 
   // EIP-7702
   repeated SignedAuthorization authorization_list = 16;
+
+  // Deposit (type 0x7E) — L1-to-L2 deposit, no signature
+  bytes  source_hash           = 17;  // B256 32 bytes
+  bytes  mint                  = 18;  // U128 16 bytes big-endian; empty = zero
+  bool   is_system_transaction = 19;
 }
 
 message Signature {
@@ -148,6 +153,12 @@ message Receipt {
   bool           success             = 2;
   uint64         cumulative_gas_used = 3;
   repeated EventLog logs             = 4;
+
+  // Deposit receipt extra fields
+  bool   has_deposit_nonce           = 5;
+  uint64 deposit_nonce               = 6;
+  bool   has_deposit_receipt_version = 7;
+  uint64 deposit_receipt_version     = 8;
 }
 
 message EventLog {

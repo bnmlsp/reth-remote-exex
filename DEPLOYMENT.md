@@ -4,7 +4,7 @@ This guide covers deploying reth-remote-exex on a server that is **already runni
 
 ## How It Works
 
-reth-remote-exex ships its own reth binary (`target/release/exex`) built on top of a forked reth (`bnmlsp/reth`, branch `dev-exex-internal-txs`). The ExEx and gRPC server are embedded in the process — no separate service is needed. On startup, the gRPC server automatically listens on `0.0.0.0:10000` and begins streaming block data to connected subscribers.
+reth-remote-exex ships its own reth binary (`target/release/exex`) built on top of a forked reth (`bnmlsp/reth`, branch `dev-exex-internal-txs-v2.3.0`). The ExEx and gRPC server are embedded in the process — no separate service is needed. On startup, the gRPC server automatically listens on `0.0.0.0:10000` and begins streaming block data to connected subscribers.
 
 ## Requirements
 

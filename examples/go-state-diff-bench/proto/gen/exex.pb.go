@@ -917,7 +917,7 @@ func (x *Withdrawal) GetAmount() uint64 {
 type Transaction struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Hash      []byte                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                    // B256 32 bytes
-	TxType    uint32                 `protobuf:"varint,2,opt,name=tx_type,json=txType,proto3" json:"tx_type,omitempty"` // 0=Legacy 1=2930 2=1559 3=4844 4=7702
+	TxType    uint32                 `protobuf:"varint,2,opt,name=tx_type,json=txType,proto3" json:"tx_type,omitempty"` // 0=Legacy 1=2930 2=1559 3=4844 4=7702 126=Deposit
 	Signature *Signature             `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
 	// common fields
 	Nonce    uint64 `protobuf:"varint,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
@@ -939,8 +939,12 @@ type Transaction struct {
 	MaxFeePerBlobGas    []byte   `protobuf:"bytes,15,opt,name=max_fee_per_blob_gas,json=maxFeePerBlobGas,proto3" json:"max_fee_per_blob_gas,omitempty"`      // U128 16 bytes
 	// EIP-7702
 	AuthorizationList []*SignedAuthorization `protobuf:"bytes,16,rep,name=authorization_list,json=authorizationList,proto3" json:"authorization_list,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Deposit (type 0x7E) — L1-to-L2 deposit, no signature
+	SourceHash          []byte `protobuf:"bytes,17,opt,name=source_hash,json=sourceHash,proto3" json:"source_hash,omitempty"` // B256 32 bytes
+	Mint                []byte `protobuf:"bytes,18,opt,name=mint,proto3" json:"mint,omitempty"`                               // U128 16 bytes big-endian; empty = zero
+	IsSystemTransaction bool   `protobuf:"varint,19,opt,name=is_system_transaction,json=isSystemTransaction,proto3" json:"is_system_transaction,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Transaction) Reset() {
@@ -1083,6 +1087,27 @@ func (x *Transaction) GetAuthorizationList() []*SignedAuthorization {
 		return x.AuthorizationList
 	}
 	return nil
+}
+
+func (x *Transaction) GetSourceHash() []byte {
+	if x != nil {
+		return x.SourceHash
+	}
+	return nil
+}
+
+func (x *Transaction) GetMint() []byte {
+	if x != nil {
+		return x.Mint
+	}
+	return nil
+}
+
+func (x *Transaction) GetIsSystemTransaction() bool {
+	if x != nil {
+		return x.IsSystemTransaction
+	}
+	return false
 }
 
 type Signature struct {
@@ -1287,8 +1312,13 @@ type Receipt struct {
 	Success           bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
 	CumulativeGasUsed uint64                 `protobuf:"varint,3,opt,name=cumulative_gas_used,json=cumulativeGasUsed,proto3" json:"cumulative_gas_used,omitempty"`
 	Logs              []*EventLog            `protobuf:"bytes,4,rep,name=logs,proto3" json:"logs,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Deposit receipt extra fields
+	HasDepositNonce          bool   `protobuf:"varint,5,opt,name=has_deposit_nonce,json=hasDepositNonce,proto3" json:"has_deposit_nonce,omitempty"`
+	DepositNonce             uint64 `protobuf:"varint,6,opt,name=deposit_nonce,json=depositNonce,proto3" json:"deposit_nonce,omitempty"`
+	HasDepositReceiptVersion bool   `protobuf:"varint,7,opt,name=has_deposit_receipt_version,json=hasDepositReceiptVersion,proto3" json:"has_deposit_receipt_version,omitempty"`
+	DepositReceiptVersion    uint64 `protobuf:"varint,8,opt,name=deposit_receipt_version,json=depositReceiptVersion,proto3" json:"deposit_receipt_version,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *Receipt) Reset() {
@@ -1347,6 +1377,34 @@ func (x *Receipt) GetLogs() []*EventLog {
 		return x.Logs
 	}
 	return nil
+}
+
+func (x *Receipt) GetHasDepositNonce() bool {
+	if x != nil {
+		return x.HasDepositNonce
+	}
+	return false
+}
+
+func (x *Receipt) GetDepositNonce() uint64 {
+	if x != nil {
+		return x.DepositNonce
+	}
+	return 0
+}
+
+func (x *Receipt) GetHasDepositReceiptVersion() bool {
+	if x != nil {
+		return x.HasDepositReceiptVersion
+	}
+	return false
+}
+
+func (x *Receipt) GetDepositReceiptVersion() uint64 {
+	if x != nil {
+		return x.DepositReceiptVersion
+	}
+	return 0
 }
 
 type EventLog struct {
@@ -2291,7 +2349,7 @@ const file_exex_proto_rawDesc = "" +
 	"\x05index\x18\x01 \x01(\x04R\x05index\x12'\n" +
 	"\x0fvalidator_index\x18\x02 \x01(\x04R\x0evalidatorIndex\x12\x18\n" +
 	"\aaddress\x18\x03 \x01(\fR\aaddress\x12\x16\n" +
-	"\x06amount\x18\x04 \x01(\x04R\x06amount\"\xd4\x04\n" +
+	"\x06amount\x18\x04 \x01(\x04R\x06amount\"\xbd\x05\n" +
 	"\vTransaction\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x17\n" +
 	"\atx_type\x18\x02 \x01(\rR\x06txType\x12-\n" +
@@ -2310,7 +2368,11 @@ const file_exex_proto_rawDesc = "" +
 	"accessList\x122\n" +
 	"\x15blob_versioned_hashes\x18\x0e \x03(\fR\x13blobVersionedHashes\x12.\n" +
 	"\x14max_fee_per_blob_gas\x18\x0f \x01(\fR\x10maxFeePerBlobGas\x12H\n" +
-	"\x12authorization_list\x18\x10 \x03(\v2\x19.exex.SignedAuthorizationR\x11authorizationList\"B\n" +
+	"\x12authorization_list\x18\x10 \x03(\v2\x19.exex.SignedAuthorizationR\x11authorizationList\x12\x1f\n" +
+	"\vsource_hash\x18\x11 \x01(\fR\n" +
+	"sourceHash\x12\x12\n" +
+	"\x04mint\x18\x12 \x01(\fR\x04mint\x122\n" +
+	"\x15is_system_transaction\x18\x13 \x01(\bR\x13isSystemTransaction\"B\n" +
 	"\tSignature\x12\x19\n" +
 	"\by_parity\x18\x01 \x01(\bR\ayParity\x12\f\n" +
 	"\x01r\x18\x02 \x01(\fR\x01r\x12\f\n" +
@@ -2324,12 +2386,16 @@ const file_exex_proto_rawDesc = "" +
 	"\x05nonce\x18\x03 \x01(\x04R\x05nonce\x12\x19\n" +
 	"\by_parity\x18\x04 \x01(\bR\ayParity\x12\f\n" +
 	"\x01r\x18\x05 \x01(\fR\x01r\x12\f\n" +
-	"\x01s\x18\x06 \x01(\fR\x01s\"\x90\x01\n" +
+	"\x01s\x18\x06 \x01(\fR\x01s\"\xd8\x02\n" +
 	"\aReceipt\x12\x17\n" +
 	"\atx_type\x18\x01 \x01(\rR\x06txType\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12.\n" +
 	"\x13cumulative_gas_used\x18\x03 \x01(\x04R\x11cumulativeGasUsed\x12\"\n" +
-	"\x04logs\x18\x04 \x03(\v2\x0e.exex.EventLogR\x04logs\"P\n" +
+	"\x04logs\x18\x04 \x03(\v2\x0e.exex.EventLogR\x04logs\x12*\n" +
+	"\x11has_deposit_nonce\x18\x05 \x01(\bR\x0fhasDepositNonce\x12#\n" +
+	"\rdeposit_nonce\x18\x06 \x01(\x04R\fdepositNonce\x12=\n" +
+	"\x1bhas_deposit_receipt_version\x18\a \x01(\bR\x18hasDepositReceiptVersion\x126\n" +
+	"\x17deposit_receipt_version\x18\b \x01(\x04R\x15depositReceiptVersion\"P\n" +
 	"\bEventLog\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\fR\aaddress\x12\x16\n" +
 	"\x06topics\x18\x02 \x03(\fR\x06topics\x12\x12\n" +

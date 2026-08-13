@@ -64,7 +64,7 @@ pub fn notification_to_proto(notif: &ExExNotification, flags: &SubscribeFlags) -
 pub(crate) fn chain_to_proto(chain: &Chain, flags: &SubscribeFlags) -> proto::Chain {
     let blocks = chain
         .blocks_and_receipts()
-        .map(|(block, receipts)| block_with_receipts_to_proto(block, receipts, flags))
+        .map(|(block, receipts)| block_with_receipts_to_proto(block.as_ref(), receipts, flags))
         .collect();
 
     let state_diff = if flags.include_state_diff { Some(state_diff_to_proto(chain)) } else { None };

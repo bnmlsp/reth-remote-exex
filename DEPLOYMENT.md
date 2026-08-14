@@ -75,3 +75,4 @@ sudo systemctl start reth.service
 - **gRPC port**: `0.0.0.0:10000` is exposed by default. Restrict access at the firewall level if external clients should not connect directly.
 - **No TLS / no auth**: the gRPC server is plaintext. Rely on network-level controls (firewall rules, VPN, SSH tunnel) to limit access.
 - **No reconnect logic**: clients must implement their own reconnect on stream EOF or error.
+- **Go tool flag order**: Go's `flag` package stops parsing after the first positional argument. Always put flags **before** the address: `go run . --headers --transactions 127.0.0.1:10000` (not `go run . 127.0.0.1:10000 --headers`).

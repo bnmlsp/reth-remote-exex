@@ -119,4 +119,4 @@ Requirements → Design → Coding → Testing → Compliance Review → Quality
 | go-trace-verifier | ✅ Complete (commit c7eb605) |
 | SubscribeRequest field filtering | ✅ Complete (commit 9fa3ee7) |
 | Upgrade reth to v2.4.0 | ✅ Complete (commit 649664f), deployment verified (AC4–AC6 passed) |
-| Upgrade reth to v2.5.0 | 🔧 In progress — requirements confirmed |
+| Upgrade reth to v2.5.0 | ✅ Complete (commit d2240a8), deployment verified (AC4–AC6 passed) |

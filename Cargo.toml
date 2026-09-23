@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reth = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0", default-features = false, features = ["jemalloc", "otlp", "otlp-logs", "js-tracer", "keccak-cache-global", "asm-keccak", "min-trace-logs"] }
-reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0", features = ["serde"] }
-reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0" }
-reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0" }
-reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0" }
-reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0", features = ["traces"] }
-reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.0" }
+reth = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2", default-features = false, features = ["jemalloc", "otlp", "otlp-logs", "js-tracer", "keccak-cache-global", "asm-keccak", "min-trace-logs"] }
+reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2", features = ["serde"] }
+reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2" }
+reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2" }
+reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2" }
+reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2", features = ["traces"] }
+reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.5.2" }
 reth-primitives-traits = "=0.6.0"
 
 alloy-consensus = "=2.3.0"

@@ -4,7 +4,7 @@ This guide covers deploying reth-remote-exex on a server that is **already runni
 
 ## How It Works
 
-reth-remote-exex ships its own reth binary (`target/release/exex`) built on top of a forked reth (`bnmlsp/reth`, branch `dev-exex-internal-txs-v2.5.0`). The ExEx and gRPC server are embedded in the process — no separate service is needed. On startup, the gRPC server automatically listens on `0.0.0.0:10000` and begins streaming block data to connected subscribers.
+reth-remote-exex ships its own reth binary (`target/release/exex`) built on top of a forked reth (`bnmlsp/reth`, branch `dev-exex-internal-txs-v2.5.2`). The ExEx and gRPC server are embedded in the process — no separate service is needed. On startup, the gRPC server automatically listens on `0.0.0.0:10000` and begins streaming block data to connected subscribers.
 
 ## Requirements
 
@@ -29,18 +29,22 @@ cp /home/ubuntu/eth/bin/reth /home/ubuntu/eth/bin/reth.bak
 
 ## Step 3 — Replace the Binary
 
+The running process holds the binary file, so `cp` over it fails with `Text file busy`. Stop the service first:
+
 ```bash
+sudo systemctl stop reth.service
 cp ~/reth-remote-exex/target/release/exex /home/ubuntu/eth/bin/reth
+/home/ubuntu/eth/bin/reth --version   # confirm the new version before starting
 ```
 
 ## Step 4 — No systemd Changes Required
 
 The existing `ExecStart` flags (`--datadir`, `--http`, `--ws`, `--authrpc`, etc.) are fully compatible. The ExEx initializes automatically at startup — no additional flags needed. The gRPC server listens on `0.0.0.0:10000`.
 
-## Step 5 — Restart
+## Step 5 — Start
 
 ```bash
-sudo systemctl restart reth.service
+sudo systemctl start reth.service
 sudo journalctl -u reth.service -f
 ```
 

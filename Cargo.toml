@@ -9,29 +9,29 @@ eth = ["dep:reth-ethereum-cli", "dep:reth-node-ethereum", "dep:reth-ethereum-pri
 base = ["dep:base-common-consensus"]
 
 [dependencies]
-reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", features = ["serde"] }
-reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
-reth-provider = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
-reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0" }
-reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", features = ["traces"] }
-reth-primitives-traits = "0.4"
+reth-exex = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6", features = ["serde"] }
+reth-node-api = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6" }
+reth-provider = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6" }
+reth-tracing = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6" }
+reth-execution-types = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6", features = ["traces"] }
+reth-primitives-traits = "0.6.0"
 
 # ETH-only
-reth-ethereum-cli = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
-reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
-reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-v2.3.0", optional = true }
+reth-ethereum-cli = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6", optional = true }
+reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6", optional = true }
+reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.6", optional = true }
 
 # Base-only
-base-common-consensus = { git = "https://github.com/bnmlsp/base.git", branch = "dev-exex-internal-txs-v2.3.0", default-features = false, features = ["reth"], optional = true }
+base-common-consensus = { git = "https://github.com/bnmlsp/base.git", branch = "dev-exex-support-for-base-v1.4.2", default-features = false, features = ["reth"], optional = true }
 
-alloy-consensus = "2.0"
-alloy-rpc-types-trace = "2.0"
-alloy-primitives = "1.6"
-alloy-eips = "2.0"
+alloy-consensus = "2.3.0"
+alloy-rpc-types-trace = "2.3.0"
+alloy-primitives = "1.6.1"
+alloy-eips = "2.3.0"
 alloy-eip2930 = "0.2"
 alloy-eip7702 = "0.6"
-revm-database = "15"
-revm-state = "12"
+revm-database = "42.0.0"
+revm-state = "42.0.0"
 
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"

@@ -4,7 +4,7 @@ This guide covers deploying reth-remote-exex on a server that is **already runni
 
 ## How It Works
 
-reth-remote-exex ships its own reth binary (`target/release/exex`) built on top of a forked reth (`bnmlsp/reth`, branch `dev-exex-internal-txs-v2.3.0`). The ExEx and gRPC server are embedded in the process — no separate service is needed. On startup, the gRPC server automatically listens on `0.0.0.0:10000` and begins streaming block data to connected subscribers.
+reth-remote-exex ships its own reth binary (`target/release/exex`) built on top of a forked reth (`bnmlsp/reth`, branch `dev-exex-internal-txs-base-v2.5.2.6`). The ExEx and gRPC server are embedded in the process — no separate service is needed. On startup, the gRPC server automatically listens on `0.0.0.0:10000` and begins streaming block data to connected subscribers.
 
 ## Requirements
 
@@ -75,3 +75,4 @@ sudo systemctl start reth.service
 - **gRPC port**: `0.0.0.0:10000` is exposed by default. Restrict access at the firewall level if external clients should not connect directly.
 - **No TLS / no auth**: the gRPC server is plaintext. Rely on network-level controls (firewall rules, VPN, SSH tunnel) to limit access.
 - **No reconnect logic**: clients must implement their own reconnect on stream EOF or error.
+- **Go tool flag order**: Go's `flag` package stops parsing after the first positional argument. Always put flags **before** the address: `go run . --headers --transactions 127.0.0.1:10000` (not `go run . 127.0.0.1:10000 --headers`).

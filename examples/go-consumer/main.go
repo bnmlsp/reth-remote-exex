@@ -9,6 +9,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 
 	pb "exex_consumer/proto/gen"
@@ -113,6 +115,7 @@ func printChain(label string, chain *pb.Chain) {
 		}
 		fmt.Printf("  block #%d  txs=%d  receipts=%d  withdrawals=%d\n",
 			blockNum, len(bwr.Txs), len(bwr.Receipts), len(bwr.Withdrawals))
+		printTxSummary(bwr)
 	}
 
 	sd := chain.StateDiff
@@ -173,6 +176,55 @@ func printChain(label string, chain *pb.Chain) {
 		}
 	}
 	fmt.Println()
+}
+
+// depositTxType is the OP-Stack Deposit transaction type (0x7E). Base places the
+// L1 attributes deposit as the first transaction of every block.
+const depositTxType = 126
+
+// printTxSummary prints the tx_type distribution of a block, then expands the
+// Deposit-specific fields of the first transaction and its receipt. Printing every
+// transaction is impractical — Base blocks routinely carry 150-350 of them — and the
+// first slot is where the L1 attributes deposit lives, so it is the one worth showing.
+func printTxSummary(bwr *pb.BlockWithReceipts) {
+	if len(bwr.Txs) == 0 {
+		return
+	}
+
+	counts := make(map[uint32]int, 4)
+	for _, tx := range bwr.Txs {
+		counts[tx.TxType]++
+	}
+	txTypes := make([]uint32, 0, len(counts))
+	for txType := range counts {
+		txTypes = append(txTypes, txType)
+	}
+	// Sorted so repeated runs produce diffable output; Go map iteration order is random.
+	sort.Slice(txTypes, func(i, j int) bool { return txTypes[i] < txTypes[j] })
+	parts := make([]string, 0, len(txTypes))
+	for _, txType := range txTypes {
+		parts = append(parts, fmt.Sprintf("%d:%d", txType, counts[txType]))
+	}
+	fmt.Printf("    tx_types: {%s}\n", strings.Join(parts, ", "))
+
+	tx := bwr.Txs[0]
+	fmt.Printf("    tx[0] type=%d  hash=%s\n", tx.TxType, hexBytes(tx.Hash))
+	if tx.TxType == depositTxType {
+		fmt.Printf("      deposit: source_hash=%s  mint=%s  is_system_tx=%v\n",
+			hexBytes(tx.SourceHash), hexBytes(tx.Mint), tx.IsSystemTransaction)
+	}
+
+	if len(bwr.Receipts) == 0 {
+		return
+	}
+	receipt := bwr.Receipts[0]
+	fmt.Printf("    receipt[0] type=%d  success=%v  cumulative_gas_used=%d  logs=%d\n",
+		receipt.TxType, receipt.Success, receipt.CumulativeGasUsed, len(receipt.Logs))
+	if receipt.HasDepositNonce || receipt.HasDepositReceiptVersion {
+		fmt.Printf("      deposit: nonce=%d (present=%v)  receipt_version=%d (present=%v)\n",
+			receipt.DepositNonce, receipt.HasDepositNonce,
+			receipt.DepositReceiptVersion, receipt.HasDepositReceiptVersion)
+	}
 }
 
 // printCallFrame recursively prints a CallFrame tree at the given indent depth.

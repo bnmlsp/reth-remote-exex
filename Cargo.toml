@@ -22,7 +22,7 @@ reth-node-ethereum = { git = "https://github.com/bnmlsp/reth.git", branch = "dev
 reth-ethereum-primitives = { git = "https://github.com/bnmlsp/reth.git", branch = "dev-exex-internal-txs-base-v2.5.2.8", optional = true }
 
 # Base-only
-base-common-consensus = { git = "https://github.com/bnmlsp/base.git", branch = "dev-exex-support-for-base-v1.4.2", default-features = false, features = ["reth"], optional = true }
+base-common-consensus = { git = "https://github.com/bnmlsp/base.git", branch = "dev-exex-support-for-base-v1.5.1", default-features = false, features = ["reth"], optional = true }
 
 alloy-consensus = "2.3.0"
 alloy-rpc-types-trace = "2.3.0"
